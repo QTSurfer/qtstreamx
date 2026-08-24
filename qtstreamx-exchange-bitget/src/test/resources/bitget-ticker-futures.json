@@ -1,0 +1,22 @@
+{
+  "action": "snapshot",
+  "arg": {"instType":"USDT-FUTURES","channel":"ticker","instId":"BTCUSDT"},
+  "data": [{
+    "instId": "BTCUSDT",
+    "lastPr": "65010.5",
+    "bidPr": "65009.0",
+    "askPr": "65011.0",
+    "bidSz": "1.234",
+    "askSz": "2.345",
+    "open24h": "64200.0",
+    "high24h": "65200.0",
+    "low24h": "64000.0",
+    "baseVolume": "1234.56",
+    "quoteVolume": "80234000.12",
+    "markPrice": "65010.0",
+    "indexPrice": "65009.8",
+    "fundingRate": "0.00009876",
+    "nextFundingTime": "1713744000000",
+    "ts": "1713715200123"
+  }]
+}

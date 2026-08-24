@@ -1,0 +1,12 @@
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: monthly
+  # Every action is pinned to a commit SHA, which is exactly why the pins need
+  # an updater: nothing else moves them.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

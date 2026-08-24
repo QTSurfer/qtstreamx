@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags: ['[0-9]*.[0-9]*.[0-9]*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - run: test "$GITHUB_REF_NAME" = "$(cat VERSION)"
+      # check (part of build) runs verifyTagVersion, which reads the
+      # GITHUB_REF_TYPE/GITHUB_REF_NAME GitHub sets automatically for a tag push.
+      - run: ./gradlew -Pversion="$GITHUB_REF_NAME" clean build javadoc publishToMavenLocal :qtstreamx-dex-discovery-cli:installDist --no-daemon
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: qtstreamx-dex-discovery-jvm
+          path: qtstreamx-dex-discovery-cli/build/install/qtstreamx-dex-discovery
+          if-no-files-found: error
+
+  # Same matrix, same build/test/smoke steps CI runs on every push to main —
+  # the release ships exactly what was already validated, nothing rebuilt
+  # under different conditions at tag time.
+  native:
+    uses: ./.github/workflows/native.yml
+
+  release:
+    needs: [build, native]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: downloads
+      - name: Build licensed release archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+
+          jvm_root="qtstreamx-dex-discovery-${version}-jvm"
+          cp -R downloads/qtstreamx-dex-discovery-jvm "$jvm_root"
+          chmod +x "$jvm_root"/bin/*
+          cp LICENSE NOTICE THIRD_PARTY_LICENSES.md "$jvm_root/"
+          zip -qr "$jvm_root.zip" "$jvm_root"
+          assets=("$jvm_root.zip")
+
+          # Unix targets archive as .tar.gz with the executable bit restored
+          # (artifact upload/download does not guarantee it survives); the
+          # Windows target archives as .zip, matching what its users expect.
+          # tar/zip do not care which OS produced the file they are archiving.
+          for target in linux-amd64 macos-arm64; do
+            root="qtstreamx-dex-discovery-${version}-${target}"
+            mkdir -p "$root"
+            install -m 0755 "downloads/qtstreamx-dex-discovery-${target}/qtstreamx-dex-discovery-${target}" \
+              "$root/qtstreamx-dex-discovery"
+            cp LICENSE NOTICE THIRD_PARTY_LICENSES.md "$root/"
+            tar -czf "$root.tar.gz" "$root"
+            assets+=("$root.tar.gz")
+          done
+
+          root="qtstreamx-dex-discovery-${version}-windows-amd64"
+          mkdir -p "$root"
+          cp "downloads/qtstreamx-dex-discovery-windows-amd64/qtstreamx-dex-discovery-windows-amd64.exe" \
+            "$root/qtstreamx-dex-discovery.exe"
+          cp LICENSE NOTICE THIRD_PARTY_LICENSES.md "$root/"
+          zip -qr "$root.zip" "$root"
+          assets+=("$root.zip")
+
+          sha256sum "${assets[@]}" > SHA256SUMS
+          assets+=(SHA256SUMS)
+
+          notes_file=$(mktemp)
+          awk "/^## \\[${version}\\]/{found=1; next} found && /^## \\[/{exit} found{print}" CHANGELOG.md > "$notes_file"
+          test -s "$notes_file"
+          echo "RELEASE_NOTES=$notes_file" >> "$GITHUB_ENV"
+          printf '%s\n' "${assets[@]}" > release-assets.txt
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mapfile -t assets < release-assets.txt
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file "$RELEASE_NOTES" "${assets[@]}"

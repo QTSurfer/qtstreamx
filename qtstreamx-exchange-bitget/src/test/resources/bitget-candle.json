@@ -1,0 +1,7 @@
+{
+  "action": "snapshot",
+  "arg": {"instType":"SPOT","channel":"candle1m","instId":"BTCUSDT"},
+  "data": [
+    ["1713715140000", "65000.0", "65050.5", "64990.0", "65040.0", "12.34", "802345.0"]
+  ]
+}

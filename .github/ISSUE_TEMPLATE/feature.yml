@@ -1,0 +1,10 @@
+name: Feature request
+description: Propose a focused public API or behavior change
+title: "feature: "
+body:
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+    validations:
+      required: true

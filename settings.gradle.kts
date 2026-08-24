@@ -1,0 +1,29 @@
+rootProject.name = "qtstreamx"
+
+include(
+    "qtstreamx-core",
+    "qtstreamx-codec-json",
+    "qtstreamx-codec-msgpack",
+    "qtstreamx-ws-native",
+    "qtstreamx-ws-javaws",
+    "qtstreamx-transport-nats",
+    "qtstreamx-exchange-binance",
+    "qtstreamx-exchange-bybit",
+    "qtstreamx-exchange-okx",
+    "qtstreamx-exchange-kraken",
+    "qtstreamx-exchange-bitget",
+    "qtstreamx-exchange-gateio",
+    "qtstreamx-exchange-htx",
+    "qtstreamx-link",
+    "qtstreamx-chain-evm-rpc",
+    "qtstreamx-dex-core",
+    "qtstreamx-dex-uniswap-v2",
+    "qtstreamx-dex-uniswap-v3",
+    "qtstreamx-dex-discovery-uniswap",
+    "qtstreamx-dex-discovery-cli",
+    "qtstreamx-dex-capture-csv",
+    "qtstreamx-market-aggregation",
+    "qtstreamx-discovery-binance",
+    "qtstreamx-benchmark",
+    "qtstreamx-canary"
+)

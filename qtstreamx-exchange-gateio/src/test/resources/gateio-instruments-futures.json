@@ -1,0 +1,6 @@
+[
+  {"name":"BTC_USDT","in_delisting":false},
+  {"name":"ETH_USDT","in_delisting":false},
+  {"name":"SOL_USDT","in_delisting":false},
+  {"name":"OLD_USDT","in_delisting":true}
+]

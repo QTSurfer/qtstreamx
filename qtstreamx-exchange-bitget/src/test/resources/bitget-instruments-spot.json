@@ -1,0 +1,10 @@
+{
+  "code": "00000",
+  "msg": "success",
+  "data": [
+    {"symbol":"BTCUSDT","baseCoin":"BTC","quoteCoin":"USDT","status":"online"},
+    {"symbol":"ETHUSDT","baseCoin":"ETH","quoteCoin":"USDT","status":"online"},
+    {"symbol":"DELISTED","baseCoin":"DEL","quoteCoin":"USDT","status":"offline"},
+    {"symbol":"SOLUSDC","baseCoin":"SOL","quoteCoin":"USDC","status":"online"}
+  ]
+}

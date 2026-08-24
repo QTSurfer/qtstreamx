@@ -1,0 +1,21 @@
+{
+  "time": 1713715200,
+  "time_ms": 1713715200123,
+  "channel": "futures.tickers",
+  "event": "update",
+  "result": [{
+    "contract": "BTC_USDT",
+    "last": "65010.5",
+    "change_percentage": "1.26",
+    "funding_rate": "0.00009876",
+    "funding_rate_indicative": "0.00010000",
+    "funding_next_apply": "1713744000",
+    "mark_price": "65010.0",
+    "index_price": "65009.8",
+    "total_size": "100000",
+    "volume_24h": "1234.56",
+    "volume_24h_quote": "80234000.12",
+    "high_24h": "65200.0",
+    "low_24h": "64000.0"
+  }]
+}

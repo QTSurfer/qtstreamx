@@ -1,0 +1,10 @@
+{
+  "code": "0",
+  "msg": "",
+  "data": [
+    {"instType":"SWAP","instId":"BTC-USDT-SWAP","ctType":"linear","ctValCcy":"BTC","settleCcy":"USDT","state":"live"},
+    {"instType":"SWAP","instId":"ETH-USDT-SWAP","ctType":"linear","ctValCcy":"ETH","settleCcy":"USDT","state":"live"},
+    {"instType":"SWAP","instId":"BTC-USD-SWAP","ctType":"inverse","ctValCcy":"USD","settleCcy":"BTC","state":"live"},
+    {"instType":"SWAP","instId":"SUSPENDED-USDT-SWAP","ctType":"linear","settleCcy":"USDT","state":"suspend"}
+  ]
+}

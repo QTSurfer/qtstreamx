@@ -1,0 +1,45 @@
+{
+  "retCode": 0,
+  "retMsg": "OK",
+  "result": {
+    "category": "linear",
+    "list": [
+      {
+        "symbol": "BTCUSDT",
+        "contractType": "LinearPerpetual",
+        "baseCoin": "BTC",
+        "quoteCoin": "USDT",
+        "settleCoin": "USDT",
+        "status": "Trading",
+        "fundingInterval": 240
+      },
+      {
+        "symbol": "ETHUSDT",
+        "contractType": "LinearPerpetual",
+        "baseCoin": "ETH",
+        "quoteCoin": "USDT",
+        "settleCoin": "USDT",
+        "status": "Trading",
+        "fundingInterval": 240
+      },
+      {
+        "symbol": "SOLUSDT",
+        "contractType": "LinearPerpetual",
+        "baseCoin": "SOL",
+        "quoteCoin": "USDT",
+        "settleCoin": "USDT",
+        "status": "Trading",
+        "fundingInterval": 480
+      },
+      {
+        "symbol": "OLDPAIRUSDT",
+        "contractType": "LinearPerpetual",
+        "baseCoin": "OLDPAIR",
+        "quoteCoin": "USDT",
+        "settleCoin": "USDT",
+        "status": "PreLaunch",
+        "fundingInterval": 480
+      }
+    ]
+  }
+}

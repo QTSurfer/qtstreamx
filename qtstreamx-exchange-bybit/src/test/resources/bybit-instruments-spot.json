@@ -1,0 +1,13 @@
+{
+  "retCode": 0,
+  "retMsg": "OK",
+  "result": {
+    "category": "spot",
+    "list": [
+      {"symbol": "BTCUSDT", "baseCoin": "BTC", "quoteCoin": "USDT", "status": "Trading", "innovation": "0"},
+      {"symbol": "ETHUSDT", "baseCoin": "ETH", "quoteCoin": "USDT", "status": "Trading", "innovation": "0"},
+      {"symbol": "DELSTUSDT", "baseCoin": "DELST", "quoteCoin": "USDT", "status": "Delisted", "innovation": "0"},
+      {"symbol": "SOLUSDC", "baseCoin": "SOL", "quoteCoin": "USDC", "status": "Trading", "innovation": "0"}
+    ]
+  }
+}

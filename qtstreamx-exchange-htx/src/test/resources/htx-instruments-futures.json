@@ -1,0 +1,10 @@
+{
+  "status": "ok",
+  "data": [
+    {"symbol":"BTC","contract_code":"BTC-USDT","contract_size":0.0001,"trade_partition":"USDT","contract_status":1,"business_type":"swap"},
+    {"symbol":"ETH","contract_code":"ETH-USDT","contract_size":0.001,"trade_partition":"USDT","contract_status":1,"business_type":"swap"},
+    {"symbol":"SOL","contract_code":"SOL-USDT","contract_size":1,"trade_partition":"USDT","contract_status":1,"business_type":"swap"},
+    {"symbol":"OLD","contract_code":"OLD-USDT","contract_size":1,"trade_partition":"USDT","contract_status":2,"business_type":"swap"},
+    {"symbol":"BTC","contract_code":"BTC-USDT-240628","contract_size":0.0001,"trade_partition":"USDT","contract_status":1,"business_type":"futures"}
+  ]
+}

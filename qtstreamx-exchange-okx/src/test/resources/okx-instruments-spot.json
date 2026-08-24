@@ -1,0 +1,10 @@
+{
+  "code": "0",
+  "msg": "",
+  "data": [
+    {"instType":"SPOT","instId":"BTC-USDT","baseCcy":"BTC","quoteCcy":"USDT","state":"live"},
+    {"instType":"SPOT","instId":"ETH-USDT","baseCcy":"ETH","quoteCcy":"USDT","state":"live"},
+    {"instType":"SPOT","instId":"DELISTED-USDT","baseCcy":"DELISTED","quoteCcy":"USDT","state":"suspend"},
+    {"instType":"SPOT","instId":"SOL-USDC","baseCcy":"SOL","quoteCcy":"USDC","state":"live"}
+  ]
+}

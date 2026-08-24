@@ -1,0 +1,11 @@
+name: Bug report
+description: Report a reproducible problem
+title: "bug: "
+body:
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Include a minimal example without credentials or private URLs.
+    validations:
+      required: true

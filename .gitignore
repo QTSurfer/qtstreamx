@@ -1,0 +1,29 @@
+# Gradle
+.gradle/
+**/build/
+!gradle/wrapper/
+
+# Maven (legacy)
+**/target/
+
+# Java
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+*.log
+
+# IDE
+.idea/
+*.iml
+.settings/
+.classpath
+.project
+.vscode/
+
+# Python (repository safety checks)
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+.claude/

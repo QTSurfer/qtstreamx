@@ -1,0 +1,5 @@
+jdk:
+  - openjdk25
+install:
+  - test -n "${VERSION:-}" && test "$VERSION" = "$(tr -d '[:space:]' < VERSION)"
+  - ./gradlew -Pversion="$VERSION" clean check verifyPublicationBoundaries publishToMavenLocal --no-daemon

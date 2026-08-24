@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/QTSurfer/qtstreamx/security/advisories/new
+    about: Never report vulnerabilities in a public issue. Use the private advisory form.
+  - name: Ask a question
+    url: https://github.com/QTSurfer/qtstreamx/blob/main/SUPPORT.md
+    about: How to ask for help, and what to include.

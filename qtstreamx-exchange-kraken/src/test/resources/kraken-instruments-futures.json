@@ -1,0 +1,11 @@
+{
+  "result": "success",
+  "instruments": [
+    {"symbol":"PF_XBTUSD","tradeable":true,"category":"PF","underlying":"rr_xbtusd"},
+    {"symbol":"PF_ETHUSD","tradeable":true,"category":"PF","underlying":"rr_ethusd"},
+    {"symbol":"PF_SOLUSDT","tradeable":true,"category":"PF","underlying":"rr_solusdt"},
+    {"symbol":"PI_XBTUSD","tradeable":true,"category":"PI","underlying":"rr_xbtusd"},
+    {"symbol":"FF_XBTUSD_240628","tradeable":true,"category":"FF","underlying":"rr_xbtusd"},
+    {"symbol":"PF_DEAD","tradeable":false,"category":"PF","underlying":"rr_dead"}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "channel": "ohlc",
+  "type": "update",
+  "data": [
+    {
+      "symbol": "BTC/USD",
+      "interval": 1,
+      "interval_begin": "2026-04-21T16:00:00.000000Z",
+      "open": "64980.5",
+      "high": "65020.0",
+      "low": "64975.0",
+      "close": "65010.25",
+      "trades": 52,
+      "volume": "3.4567"
+    }
+  ]
+}

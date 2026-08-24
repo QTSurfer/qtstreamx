@@ -1,0 +1,9 @@
+{
+  "status": "ok",
+  "data": [
+    {"symbol":"btcusdt","base-currency":"btc","quote-currency":"usdt","state":"online"},
+    {"symbol":"ethusdt","base-currency":"eth","quote-currency":"usdt","state":"online"},
+    {"symbol":"solusdc","base-currency":"sol","quote-currency":"usdc","state":"online"},
+    {"symbol":"oldpair","base-currency":"old","quote-currency":"usdt","state":"offline"}
+  ]
+}

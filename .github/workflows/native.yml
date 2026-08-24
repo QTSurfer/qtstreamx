@@ -1,0 +1,66 @@
+name: Native CLI
+
+# Builds, native-tests, and smoke-tests the DEX discovery CLI as a GraalVM
+# Native Image on every supported platform. Also callable from release.yml so
+# the exact same matrix that CI validates on every push is what a tag ships —
+# there is one definition of "supported platform", not two that can drift.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux-amd64
+          - os: macos-14
+            target: macos-arm64
+          - os: windows-latest
+            target: windows-amd64
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: graalvm/setup-graalvm@dec5790292b7b36d7ad368abe856887749c6c520 # v1.4.3
+        with:
+          java-version: '25'
+          distribution: graalvm-community
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up MSVC (required by GraalVM native-image on Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+      - run: ./gradlew :qtstreamx-dex-discovery-cli:nativeCompile :qtstreamx-dex-discovery-cli:nativeTest :qtstreamx-dex-discovery-cli:nativeSmoke --no-daemon
+      - name: Stage the executable under its platform-qualified name
+        shell: bash
+        run: |
+          mkdir -p staging
+          src="qtstreamx-dex-discovery-cli/build/native/nativeCompile/qtstreamx-dex-discovery"
+          dest="staging/qtstreamx-dex-discovery-${{ matrix.target }}"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            src="$src.exe"; dest="$dest.exe"
+          fi
+          cp "$src" "$dest"
+          # The execute bit only means anything on Unix; Windows executability
+          # comes from the .exe extension, not this permission.
+          [ "${{ runner.os }}" = "Windows" ] || chmod 0755 "$dest"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: qtstreamx-dex-discovery-${{ matrix.target }}
+          path: staging/*
+          if-no-files-found: error

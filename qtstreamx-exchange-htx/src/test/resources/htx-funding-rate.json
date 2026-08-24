@@ -1,0 +1,17 @@
+{
+  "op": "notify",
+  "topic": "public.BTC-USDT.funding_rate",
+  "ts": 1713715200123,
+  "data": [
+    {
+      "symbol": "BTC",
+      "contract_code": "BTC-USDT",
+      "fee_asset": "USDT",
+      "funding_time": "1713715200000",
+      "funding_rate": "0.00009876",
+      "estimated_rate": "0.00012000",
+      "settlement_time": "1713744000000",
+      "next_funding_time": "1713744000000"
+    }
+  ]
+}

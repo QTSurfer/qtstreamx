@@ -1,0 +1,21 @@
+{
+  "channel": "ticker",
+  "type": "update",
+  "timestamp": "2026-04-21T16:00:00.123456Z",
+  "data": [
+    {
+      "symbol": "BTC/USD",
+      "bid": 65000.0,
+      "bid_qty": 0.5,
+      "ask": 65001.5,
+      "ask_qty": 0.75,
+      "last": 65000.5,
+      "volume": 1234.56,
+      "vwap": 64950.0,
+      "low": 64500.0,
+      "high": 65100.0,
+      "change": 200.0,
+      "change_pct": 0.31
+    }
+  ]
+}
