@@ -35,10 +35,15 @@ tasks.register<Exec>("nativeSmoke") {
     group = "verification"
     description = "Runs deterministic endpoint-free smoke checks against the native DEX discovery CLI."
     dependsOn(tasks.named("nativeCompile"), tasks.named("nativeTest"))
-    executable("bash")
+    val isWindows = org.gradle.internal.os.OperatingSystem.current().isWindows
+    // GitHub's Windows runners resolve a bare "bash" to the WSL launcher stub in
+    // System32 before Git Bash, and that stub fails outright with no WSL
+    // distribution installed. Pin Git for Windows' bash explicitly instead.
+    executable(if (isWindows) "C:\\Program Files\\Git\\bin\\bash.exe" else "bash")
+    val cliName = if (isWindows) "qtstreamx-dex-discovery.exe" else "qtstreamx-dex-discovery"
     args(
         layout.projectDirectory.file("src/native-smoke/native-smoke.sh").asFile.absolutePath,
-        layout.buildDirectory.file("native/nativeCompile/qtstreamx-dex-discovery").get().asFile.absolutePath
+        layout.buildDirectory.file("native/nativeCompile/$cliName").get().asFile.absolutePath
     )
 }
 
