@@ -21,8 +21,8 @@ dependencies {
     implementation(project(":qtstreamx-exchange-gateio"))
     implementation(project(":qtstreamx-exchange-htx"))
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.9")
-    implementation("org.slf4j:slf4j-api:2.0.16")
-    runtimeOnly("org.slf4j:slf4j-simple:2.0.16")
+    implementation("org.slf4j:slf4j-api:2.0.18")
+    runtimeOnly("org.slf4j:slf4j-simple:2.0.18")
 
     // Live capture IT (ExchangeCaptureIT) discovers the binance universe via its REST instrument
     // cache, which lives in its own discovery module (not a runtime dep of the canary app).
