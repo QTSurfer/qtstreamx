@@ -48,10 +48,18 @@ tasks.withType<JavaCompile>().configureEach {
 
 tasks.named<Test>("test") {
     dependsOn(tasks.named("installDist"))
+    // The application plugin's Windows launcher is the .bat script; the
+    // extension-less script is a POSIX shell script that ProcessBuilder
+    // cannot start directly on Windows.
+    val launcherName = if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
+        "qtstreamx-dex-discovery.bat"
+    } else {
+        "qtstreamx-dex-discovery"
+    }
     systemProperty(
         "qtstreamx.cli.executable",
         layout.buildDirectory.file(
-            "install/qtstreamx-dex-discovery/bin/qtstreamx-dex-discovery"
+            "install/qtstreamx-dex-discovery/bin/$launcherName"
         ).get().asFile.absolutePath
     )
 }
