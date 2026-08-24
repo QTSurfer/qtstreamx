@@ -13,7 +13,7 @@ dependencies {
     implementation("org.simdjson:simdjson-java:0.4.0")
 
     // fastjson2 (Alibaba)
-    implementation("com.alibaba.fastjson2:fastjson2:2.0.57")
+    implementation("com.alibaba.fastjson2:fastjson2:2.0.64")
 
     // Gson (Google)
     implementation("com.google.code.gson:gson:2.12.1")
