@@ -6,6 +6,21 @@ All notable public QTStreamX changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0-rc.2] — 2026-08-31
+
+### Changed
+
+- Bumped `org.awaitility:awaitility` to 4.3.0, `com.alibaba.fastjson2:fastjson2`
+  to 2.0.64, `org.slf4j:slf4j-api`/`slf4j-simple` to 2.0.18,
+  `org.graalvm.buildtools.native` to 1.1.10, and the Gradle wrapper to 9.7.1.
+- Bumped the pinned GitHub Actions versions used in CI (`checkout`,
+  `setup-java`, `setup-gradle`, `wrapper-validation`, `setup-graalvm`).
+
+### Fixed
+
+- `FileEvmLogCheckpointStore.save()` could mask the real exception with a
+  cleanup failure from its `finally` block if the atomic rename itself failed.
+
 ## [0.1.0-rc.1] — 2026-08-23
 
 ### Added
