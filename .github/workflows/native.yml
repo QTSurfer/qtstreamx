@@ -34,8 +34,8 @@ jobs:
           - os: windows-latest
             target: windows-amd64
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: graalvm/setup-graalvm@dec5790292b7b36d7ad368abe856887749c6c520 # v1.4.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: graalvm/setup-graalvm@5298d94fb55a4f185c602eeac5de1b553882abe2 # v1.6.4
         with:
           java-version: '25'
           distribution: graalvm-community
@@ -46,6 +46,13 @@ jobs:
         with:
           arch: x64
       - run: ./gradlew :qtstreamx-dex-discovery-cli:nativeCompile :qtstreamx-dex-discovery-cli:nativeTest :qtstreamx-dex-discovery-cli:nativeSmoke --no-daemon
+      - name: Upload the test report on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: test-report-${{ matrix.target }}
+          path: qtstreamx-dex-discovery-cli/build/reports/tests/**
+          if-no-files-found: ignore
       - name: Stage the executable under its platform-qualified name
         shell: bash
         run: |

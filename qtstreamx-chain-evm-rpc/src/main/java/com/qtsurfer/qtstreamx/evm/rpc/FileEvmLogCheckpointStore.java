@@ -57,7 +57,12 @@ public final class FileEvmLogCheckpointStore implements EvmLogCheckpointStore {
             if (CAN_FSYNC_DIRECTORY) {
                 try (FileChannel channel = FileChannel.open(directory, StandardOpenOption.READ)) { channel.force(true); }
             }
-        } finally { Files.deleteIfExists(temporary); }
+        } finally {
+            // The move already renamed the real file away; this is only reached if the
+            // move itself failed. Swallow cleanup failures here so they cannot replace
+            // the real exception from the try block above.
+            try { Files.deleteIfExists(temporary); } catch (IOException ignored) { }
+        }
     }
 
     private Path pathFor(EvmLogStreamId streamId) {

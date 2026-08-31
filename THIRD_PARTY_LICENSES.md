@@ -14,7 +14,7 @@ the same components into the native distribution.
 | `com.fasterxml.jackson.core:jackson-annotations:2.18.9` | Apache-2.0 | https://github.com/FasterXML/jackson-annotations/blob/jackson-annotations-2.18.9/LICENSE |
 | `com.fasterxml.jackson.core:jackson-core:2.18.9` | Apache-2.0 | https://github.com/FasterXML/jackson-core/blob/jackson-core-2.18.9/LICENSE |
 | `com.fasterxml.jackson.core:jackson-databind:2.18.9` | Apache-2.0 | https://github.com/FasterXML/jackson-databind/blob/jackson-databind-2.18.9/LICENSE |
-| `org.slf4j:slf4j-api:2.0.16` | MIT | https://github.com/qos-ch/slf4j/blob/v_2.0.16/LICENSE.txt |
+| `org.slf4j:slf4j-api:2.0.18` | MIT | https://github.com/qos-ch/slf4j/blob/v_2.0.18/LICENSE.txt |
 
 The Apache License 2.0 terms are reproduced in `LICENSE`.
 
@@ -33,7 +33,7 @@ to any coordinate fails `verifyPublishedRuntimeLicenses` until reviewed.
 | `org.bouncycastle:bcprov-lts8on:2.73.11` | Bouncy Castle License | https://www.bouncycastle.org/about/license/ |
 | `org.java-websocket:Java-WebSocket:1.6.0` | MIT | https://github.com/TooTallNate/Java-WebSocket/blob/v1.6.0/LICENSE |
 | `org.msgpack:msgpack-core:0.9.11` | Apache-2.0 | https://github.com/msgpack/msgpack-java/blob/v0.9.11/LICENSE.txt |
-| `org.slf4j:slf4j-api:2.0.16` | MIT | https://github.com/qos-ch/slf4j/blob/v_2.0.16/LICENSE.txt |
+| `org.slf4j:slf4j-api:2.0.18` | MIT | https://github.com/qos-ch/slf4j/blob/v_2.0.18/LICENSE.txt |
 
 ## Jackson notices
 

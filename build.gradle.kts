@@ -67,7 +67,18 @@ subprojects {
         options.encoding = "UTF-8"
         options.release.set(25)
     }
-    tasks.withType<Test>().configureEach { useJUnitPlatform() }
+    tasks.withType<Test>().configureEach {
+        useJUnitPlatform()
+        // The default console reporter prints only the exception class and the
+        // failing line, which is useless for diagnosing CI-only failures (no
+        // message, no cause chain). Pay the extra log verbosity everywhere so a
+        // failure is diagnosable from the CI log alone.
+        testLogging {
+            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+            showCauses = true
+            showStackTraces = true
+        }
+    }
     tasks.withType<Javadoc>().configureEach {
         options.encoding = "UTF-8"
         isFailOnError = true
