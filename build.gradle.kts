@@ -85,7 +85,7 @@ subprojects {
         (options as StandardJavadocDocletOptions).addBooleanOption("Xdoclint:all,-missing", true)
     }
 
-    dependencies.add("testImplementation", "org.junit.jupiter:junit-jupiter:5.11.4")
+    dependencies.add("testImplementation", "org.junit.jupiter:junit-jupiter:6.1.3")
     dependencies.add("testImplementation", "org.assertj:assertj-core:3.27.7")
     dependencies.add("testRuntimeOnly", "org.junit.platform:junit-platform-launcher")
 
