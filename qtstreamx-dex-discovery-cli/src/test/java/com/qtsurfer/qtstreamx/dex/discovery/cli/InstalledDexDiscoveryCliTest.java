@@ -98,7 +98,12 @@ class InstalledDexDiscoveryCliTest {
 
         assertThat(result.exitCode()).isEqualTo(DexDiscoveryCliApplication.INVALID_INPUT);
         assertThat(result.output()).isEmpty();
-        assertThat(result.error()).contains("QTSTREAMX_EVM_HTTP_URL is required")
+        assertThat(result.error()).contains(
+                "capture RPC providers missing before startup",
+                "QTSTREAMX_EVM_HTTP_URL",
+                "QTSTREAMX_EVM_WS_URL",
+                "QTSTREAMX_EVM_PASSIVE_HTTP_URL",
+                "QTSTREAMX_EVM_PASSIVE_WS_URL")
                 .doesNotContain("http://", "https://", "ws://", "wss://");
         assertThat(eventFile).doesNotExist();
         assertThat(eventFile.resolveSibling("events.csv.metadata.csv")).doesNotExist();

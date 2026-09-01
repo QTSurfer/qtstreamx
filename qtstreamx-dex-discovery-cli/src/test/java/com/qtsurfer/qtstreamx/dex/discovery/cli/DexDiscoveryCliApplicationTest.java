@@ -77,6 +77,39 @@ class DexDiscoveryCliApplicationTest {
     }
 
     @Test
+    void preflightsAndIdentifiesTheConfiguredHttpProviderWithoutLeakingIt() {
+        TestTerminal missingTerminal = new TestTerminal();
+        AtomicReference<Boolean> missingFactoryCalled = new AtomicReference<>(false);
+        DexDiscoveryCliApplication missing = new DexDiscoveryCliApplication(
+                missingTerminal,
+                (protocol, network, endpoint) -> {
+                    missingFactoryCalled.set(true);
+                    return request -> CliResponse.ok(request, List.of());
+                });
+
+        int missingExit = missing.run(
+                new String[] {"uniswap", "token", "--network", "ethereum", TOKEN}, Map.of());
+
+        assertThat(missingExit).isEqualTo(DexDiscoveryCliApplication.INVALID_INPUT);
+        assertThat(missingFactoryCalled.get()).isFalse();
+        assertThat(missingTerminal.errors()).contains("QTSTREAMX_EVM_HTTP_URL is required");
+
+        TestTerminal configuredTerminal = new TestTerminal();
+        DexDiscoveryCliApplication configured = new DexDiscoveryCliApplication(
+                configuredTerminal,
+                (protocol, network, endpoint) -> request -> CliResponse.ok(request, List.of("delegated")));
+
+        int configuredExit = configured.run(
+                new String[] {"uniswap", "token", "--network", "ethereum", TOKEN},
+                Map.of("QTSTREAMX_EVM_HTTP_URL", "https://private.example/key"));
+
+        assertThat(configuredExit).isZero();
+        assertThat(configuredTerminal.output())
+                .contains("RPC HTTP provider: QTSTREAMX_EVM_HTTP_URL (endpoint redacted)")
+                .doesNotContain("private.example", "key");
+    }
+
+    @Test
     void mapsNoMarketAndProviderFailureToStableExitCodes() {
         TestTerminal noMarketTerminal = new TestTerminal();
         DexDiscoveryCliApplication noMarket = new DexDiscoveryCliApplication(

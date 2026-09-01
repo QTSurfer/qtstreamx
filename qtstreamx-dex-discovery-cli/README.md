@@ -29,9 +29,41 @@ qtstreamx-dex-discovery uniswap scan --network <network> --version <v2|v3> --fro
 qtstreamx-dex-discovery uniswap search --network <network> --version <v2|v3> --query <text> --from <block> --to <block>
 ```
 
-`--http-url` overrides `QTSTREAMX_EVM_HTTP_URL`. The URL is runtime-only and is
-redacted from output and errors. `protocols`, `networks`, `uniswap markets`, and
-`help` need no RPC endpoint.
+`--http-url` overrides `QTSTREAMX_EVM_HTTP_URL`. On-chain commands preflight
+that configuration before any RPC request and report whether it came from the
+option or environment variable; the URL itself is redacted from output and
+errors. The CLI deliberately has no built-in provider endpoint: choose a
+provider appropriate for the network and your operational requirements.
+`protocols`, `networks`, `uniswap markets`, and `help` need no RPC endpoint.
+
+### Public Ethereum RPCs for a quick CLI check
+
+These public, unauthenticated Ethereum Mainnet endpoints are useful for trying
+an HTTP-only lookup. They returned `eth_chainId = 0x1` when this document was
+updated, but are not an availability, throughput, historical-data, or
+WebSocket-support guarantee. They are not suitable defaults and must not be
+used as either bundle of a durable capture.
+
+| Provider | Public HTTPS endpoint | Documentation |
+|---|---|---|
+| dRPC | `https://eth.drpc.org` | [dRPC](https://drpc.org/docs/ethereum-api) |
+| Alchemy | `https://eth-mainnet.g.alchemy.com/public` | [Alchemy](https://www.alchemy.com/rpc/ethereum) |
+| PublicNode | `https://ethereum.publicnode.com` | [PublicNode](https://publicnode.com/) |
+
+For example, use dRPC for one read-only pool lookup:
+
+```bash
+export QTSTREAMX_EVM_HTTP_URL=https://eth.drpc.org
+qtstreamx-dex-discovery uniswap pool --network ethereum \
+  0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640
+```
+
+For `uniswap capture`, configure active and passive bundles from independent
+failure domains. A public endpoint is useful for an exploratory lookup, but is
+not an operational substitute for the two provider bundles required by durable
+capture. Keep every private or credentialed URL and every key in CLI options or
+environment variables; never put them in source, documentation examples, or
+committed configuration.
 
 ## Durable one-contract CSV capture
 
@@ -63,8 +95,11 @@ export QTSTREAMX_EVM_PASSIVE_WS_URL=wss://passive-ws.example
 
 The endpoint variables may instead be provided as `--http-url`, `--ws-url`,
 `--passive-http-url`, and `--passive-ws-url`. They are runtime-only: they are
-never written into either CSV, CLI output, diagnostics, fixtures, or goal
-records. `--duration-seconds` defaults to 300. Advanced recovery controls
+never written into either CSV, diagnostics, fixtures, or goal records; CLI
+output may name the supplying option or environment variable, never its value.
+Capture validates all four endpoints before opening any RPC connection and
+reports each option/environment origin with endpoint values redacted.
+`--duration-seconds` defaults to 300. Advanced recovery controls
 (`--confirmations`, `--max-block-range`, `--timeout-seconds`, `--retries`,
 `--overlap-blocks`, `--max-replay-blocks`, and `--max-provider-lag-blocks`)
 use the same confirmed-log semantics as the canary. `--checkpoint-dir` may be

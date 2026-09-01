@@ -36,7 +36,6 @@ final class UniswapCaptureCommand {
     CliResponse capture(CliRequest request, EndpointArguments endpoints) {
         String network = UniswapCliCatalog.resolveNetwork(request.requiredOption("network"));
         String version = request.requiredOption("version").toLowerCase(Locale.ROOT);
-        long startBlock = startBlock(request, endpoints, network);
         int durationSeconds = request.intOption("duration-seconds", 300);
         if (durationSeconds <= 0) {
             throw new IllegalArgumentException("--duration-seconds must be positive");
@@ -47,7 +46,9 @@ final class UniswapCaptureCommand {
                 .orElseGet(() -> output.resolveSibling(output.getFileName() + ".checkpoints"));
         try {
             CaptureMarket market = market(network, version, request.requiredAddressArgument());
+            endpoints.requireCaptureProviders();
             List<EvmProviderEndpoint> providers = providers(endpoints);
+            long startBlock = startBlock(request, endpoints, network);
             EvmLogStreamId streamId = new EvmLogStreamId(
                     network, "uniswap-capture-" + market.version + "-" + market.contract.substring(2));
             EvmLogStream logs = ActivePassiveEvmCaptureRoute.create(
@@ -80,6 +81,14 @@ final class UniswapCaptureCommand {
         }
     }
 
+    static String preflightProviders(CliRequest request, EndpointArguments endpoints) {
+        String network = UniswapCliCatalog.resolveNetwork(request.requiredOption("network"));
+        String version = request.requiredOption("version").toLowerCase(Locale.ROOT);
+        market(network, version, request.requiredAddressArgument());
+        endpoints.requireCaptureProviders();
+        return endpoints.captureProvidersMessage();
+    }
+
     private static long startBlock(CliRequest request, EndpointArguments endpoints, String network) {
         boolean block = request.option("start-block").isPresent();
         boolean date = request.option("start-date").isPresent();
@@ -95,7 +104,7 @@ final class UniswapCaptureCommand {
         try { instant = Instant.parse(value); }
         catch (java.time.format.DateTimeParseException exception) { throw new IllegalArgumentException("--start-date must be an ISO-8601 UTC instant ending in Z"); }
         return new EvmBlockTimestampResolver(new EvmHttpRpcReader(new EvmRpcReaderConfig(
-                network, endpoints.httpUrl().orElseThrow(() -> new IllegalArgumentException("--http-url or QTSTREAMX_EVM_HTTP_URL is required")),
+                network, endpoints.requireHttpUrl(),
                 request.intOption("max-block-range", 2_000), Duration.ofSeconds(request.intOption("timeout-seconds", 15)), request.intOption("retries", 3))))
                 .firstBlockAtOrAfter(instant.getEpochSecond());
     }

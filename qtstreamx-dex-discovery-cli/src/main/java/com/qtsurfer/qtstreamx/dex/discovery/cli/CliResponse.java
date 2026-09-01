@@ -1,5 +1,6 @@
 package com.qtsurfer.qtstreamx.dex.discovery.cli;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -42,5 +43,13 @@ record CliResponse(
     static CliResponse error(String protocol, String command, String status, String message) {
         return new CliResponse(
                 SCHEMA_VERSION, protocol, command, status, List.of(), List.of(message));
+    }
+
+    CliResponse withMessage(String message) {
+        Objects.requireNonNull(message, "message");
+        List<String> allMessages = new ArrayList<>(messages);
+        allMessages.add(message);
+        return new CliResponse(schemaVersion, protocol, command, status, data,
+                allMessages);
     }
 }

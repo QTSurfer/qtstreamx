@@ -18,8 +18,11 @@ rest of the stack.
    infrastructure hostnames, provider URLs containing keys, captured market
    data, absolute developer paths, or references to non-public planning
    material — including internal task, phase, or milestone codes. Provider
-   endpoints are runtime inputs, never source. Every shipped file must make
-   sense to a reader who has only this repository.
+   endpoints are runtime inputs, never source code or distributed configuration.
+   A CLI README may list a small, clearly labelled set of public, unauthenticated
+   endpoints solely for exploratory commands, together with a no-availability
+   guarantee; never use them as a built-in default or for durable capture.
+   Every shipped file must make sense to a reader who has only this repository.
 2. **Do not weaken a check to make it pass.** If a security, license,
    publication-boundary, or reproducibility check blocks you, report the
    blocker. Deleting or relaxing the check is not a fix.

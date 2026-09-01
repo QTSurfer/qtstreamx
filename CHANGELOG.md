@@ -6,6 +6,13 @@ All notable public QTStreamX changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The DEX discovery CLI now validates the provider configuration before an
+  on-chain request or capture starts, and identifies the option or environment
+  variable that supplied it without exposing an endpoint value. It deliberately
+  keeps RPC endpoints runtime-only rather than shipping a default provider.
+
 ## [0.1.0-rc.2] — 2026-08-31
 
 ### Changed

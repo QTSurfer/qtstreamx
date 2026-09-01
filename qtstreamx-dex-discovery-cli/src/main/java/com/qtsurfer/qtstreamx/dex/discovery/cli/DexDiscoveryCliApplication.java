@@ -54,7 +54,14 @@ final class DexDiscoveryCliApplication {
             protocol = request.protocolName();
             command = request.commandName();
             output = request.output();
+            String providerMessage = preflightHttpProvider(request, endpointArguments);
+            if (providerMessage != null && output == CliRequest.Output.HUMAN) {
+                terminal.write(providerMessage + "\n");
+            }
             CliResponse response = execute(request, endpointArguments);
+            if (providerMessage != null && output == CliRequest.Output.JSON) {
+                response = response.withMessage(providerMessage);
+            }
             terminal.write(renderer.render(response, output));
             return "no_supported_market".equals(response.status())
                     ? NO_SUPPORTED_MARKET
@@ -104,8 +111,7 @@ final class DexDiscoveryCliApplication {
             case TOKEN, POOL, SCAN, SEARCH -> {
                 validateOnChainOptions(request);
                 String network = uniswapNetwork(request);
-                String endpoint = endpoints.httpUrl().orElseThrow(() -> new IllegalArgumentException(
-                        "--http-url or QTSTREAMX_EVM_HTTP_URL is required"));
+                String endpoint = endpoints.requireHttpUrl();
                 yield adapterFactory.create(request.protocol(), network, endpoint).execute(request);
             }
             case CAPTURE -> {
@@ -113,6 +119,22 @@ final class DexDiscoveryCliApplication {
                 yield new UniswapCaptureCommand().capture(request, endpoints);
             }
             case INTERACTIVE -> throw new IllegalStateException("interactive request was not resolved");
+        };
+    }
+
+    private static String preflightHttpProvider(CliRequest request, EndpointArguments endpoints) {
+        return switch (request.command()) {
+            case TOKEN, POOL, SCAN, SEARCH -> {
+                validateOnChainOptions(request);
+                uniswapNetwork(request);
+                endpoints.requireHttpUrl();
+                yield endpoints.httpProviderMessage();
+            }
+            case CAPTURE -> {
+                validateCaptureOptions(request);
+                yield UniswapCaptureCommand.preflightProviders(request, endpoints);
+            }
+            default -> null;
         };
     }
 
