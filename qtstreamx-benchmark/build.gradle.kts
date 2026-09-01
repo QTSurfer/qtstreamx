@@ -16,7 +16,7 @@ dependencies {
     implementation("com.alibaba.fastjson2:fastjson2:2.0.64")
 
     // Gson (Google)
-    implementation("com.google.code.gson:gson:2.12.1")
+    implementation("com.google.code.gson:gson:2.14.0")
 
     // JMH
     jmh("org.openjdk.jmh:jmh-core:1.37")
