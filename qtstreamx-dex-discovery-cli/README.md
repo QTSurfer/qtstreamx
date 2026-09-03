@@ -10,9 +10,9 @@ signing, or transaction support is required.
 From the repository root:
 
 ```bash
-gradle :qtstreamx-dex-discovery-cli:installDist
-export QTSTREAMX_EVM_HTTP_URL=https://your-provider.example
-./qtstreamx-dex-discovery-cli/build/install/qtstreamx-dex-discovery/bin/qtstreamx-dex-discovery networks
+./gradlew :qtstreamx-dex-discovery-cli:installDist
+export QTSTREAMX_DEX_DISCOVERY=./qtstreamx-dex-discovery-cli/build/install/qtstreamx-dex-discovery/bin/qtstreamx-dex-discovery
+"$QTSTREAMX_DEX_DISCOVERY" networks
 ```
 
 With no command, the executable opens a numbered menu. Every menu operation has
@@ -25,6 +25,7 @@ qtstreamx-dex-discovery uniswap markets --network <ethereum|robinhood>
 qtstreamx-dex-discovery uniswap token --network <network> <token-address>
 qtstreamx-dex-discovery uniswap pool --network <network> <pool-address>
 qtstreamx-dex-discovery uniswap capture --network <network> --version <v2|v3> (--start-block <block>|--start-date <ISO-8601-UTC>) --out <events.csv> <reviewed-contract>
+qtstreamx-dex-discovery uniswap format --source <events.csv> --out <ticks.csv>
 qtstreamx-dex-discovery uniswap scan --network <network> --version <v2|v3> --from <block> --to <block>
 qtstreamx-dex-discovery uniswap search --network <network> --version <v2|v3> --query <text> --from <block> --to <block>
 ```
@@ -38,23 +39,27 @@ provider appropriate for the network and your operational requirements.
 
 ### Public Ethereum RPCs for a quick CLI check
 
-These public, unauthenticated Ethereum Mainnet endpoints are useful for trying
-an HTTP-only lookup. They returned `eth_chainId = 0x1` when this document was
-updated, but are not an availability, throughput, historical-data, or
-WebSocket-support guarantee. They are not suitable defaults and must not be
-used as either bundle of a durable capture.
+These public, unauthenticated Ethereum Mainnet endpoints are useful for an
+exploratory lookup or WebSocket check. They returned `eth_chainId = 0x1` when
+this document was updated, but are not an availability, throughput,
+historical-data, or WebSocket-support guarantee. They are not suitable defaults
+and must not be used as either bundle of a durable capture.
 
-| Provider | Public HTTPS endpoint | Documentation |
-|---|---|---|
-| dRPC | `https://eth.drpc.org` | [dRPC](https://drpc.org/docs/ethereum-api) |
-| Alchemy | `https://eth-mainnet.g.alchemy.com/public` | [Alchemy](https://www.alchemy.com/rpc/ethereum) |
-| PublicNode | `https://ethereum.publicnode.com` | [PublicNode](https://publicnode.com/) |
+| Provider | Public HTTPS endpoint | Public WSS endpoint | Documentation |
+|---|---|---|---|
+| dRPC | `https://eth.drpc.org` | `wss://eth.drpc.org` | [dRPC](https://drpc.org/docs/ethereum-api) |
+| Alchemy | `https://eth-mainnet.g.alchemy.com/public` | `wss://eth-mainnet.g.alchemy.com/v2/demo` | [Alchemy](https://www.alchemy.com/docs/reference/best-practices-for-using-websockets-in-web3) |
+| PublicNode | `https://ethereum-rpc.publicnode.com` | `wss://ethereum-rpc.publicnode.com` | [PublicNode](https://publicnode.com/) |
 
-For example, use dRPC for one read-only pool lookup:
+After the installation snippet above, copy and paste this to configure both
+transports and inspect one pool. The lookup itself uses HTTP; the exported WSS
+URL is ready for a later capture command.
 
 ```bash
 export QTSTREAMX_EVM_HTTP_URL=https://eth.drpc.org
-qtstreamx-dex-discovery uniswap pool --network ethereum \
+export QTSTREAMX_EVM_WS_URL=wss://eth.drpc.org
+
+"$QTSTREAMX_DEX_DISCOVERY" uniswap pool --network ethereum \
   0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640
 ```
 
@@ -64,6 +69,19 @@ not an operational substitute for the two provider bundles required by durable
 capture. Keep every private or credentialed URL and every key in CLI options or
 environment variables; never put them in source, documentation examples, or
 committed configuration.
+
+## Convert a capture for QTSurfer
+
+After capture ends, convert its raw event file in a separate pass. The derived file is directly
+uploadable as a QTSurfer ticker dataset and preserves epoch microseconds and plain decimal values.
+
+```bash
+"$QTSTREAMX_DEX_DISCOVERY" uniswap format \
+  --source /data/weth-usdc-v3.csv \
+  --out /data/weth-usdc-qtsurfer-ticks.csv
+```
+
+It writes `timestamp,close,volume,quoteVolume`; the raw `event_id` and `side` remain in the source capture.
 
 ## Durable one-contract CSV capture
 
@@ -83,7 +101,7 @@ export QTSTREAMX_EVM_WS_URL=wss://active-ws.example
 export QTSTREAMX_EVM_PASSIVE_HTTP_URL=https://passive-http.example
 export QTSTREAMX_EVM_PASSIVE_WS_URL=wss://passive-ws.example
 
-./qtstreamx-dex-discovery-cli/build/install/qtstreamx-dex-discovery/bin/qtstreamx-dex-discovery \
+"$QTSTREAMX_DEX_DISCOVERY" \
   uniswap capture \
   --network ethereum \
   --version v3 \
@@ -141,7 +159,9 @@ be supplied explicitly. This reproducible example scans only its creation block
 and resolves token metadata exclusively with JSON-RPC:
 
 ```bash
-qtstreamx-dex-discovery uniswap search \
+export QTSTREAMX_EVM_HTTP_URL=https://rpc.mainnet.chain.robinhood.com
+
+"$QTSTREAMX_DEX_DISCOVERY" uniswap search \
   --network robinhood \
   --version v2 \
   --factory 0x8bceaa40b9acdfaedf85adf4ff01f5ad6517937f \
@@ -161,7 +181,7 @@ identity.
 Inspect the pair and its current protocol-native reserves with:
 
 ```bash
-qtstreamx-dex-discovery uniswap pool \
+"$QTSTREAMX_DEX_DISCOVERY" uniswap pool \
   --network robinhood \
   0x3f653bc5425cd5e4f13dab44e4b4cef112c6767c \
   --output json
@@ -213,8 +233,8 @@ automatically, signs transactions, or manages wallets.
 ## Verification
 
 ```bash
-gradle :qtstreamx-dex-discovery-cli:test
-gradle :qtstreamx-dex-discovery-cli:javadoc
+./gradlew :qtstreamx-dex-discovery-cli:test
+./gradlew :qtstreamx-dex-discovery-cli:javadoc
 ```
 
 The default test task builds the installable distribution and executes its real
@@ -243,7 +263,7 @@ refer to that same matching GraalVM installation (or be unset).
 ```bash
 java -version
 native-image --version
-gradle :qtstreamx-dex-discovery-cli:nativeCompile
+./gradlew :qtstreamx-dex-discovery-cli:nativeCompile
 ```
 
 The resulting executable is:
@@ -255,8 +275,8 @@ qtstreamx-dex-discovery-cli/build/native/nativeCompile/qtstreamx-dex-discovery
 Run deterministic endpoint-free native verification with:
 
 ```bash
-gradle :qtstreamx-dex-discovery-cli:nativeTest
-gradle :qtstreamx-dex-discovery-cli:nativeSmoke
+./gradlew :qtstreamx-dex-discovery-cli:nativeTest
+./gradlew :qtstreamx-dex-discovery-cli:nativeSmoke
 ```
 
 `nativeTest` executes the native-compatible project tests as native binaries,

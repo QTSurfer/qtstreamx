@@ -1,7 +1,9 @@
 package com.qtsurfer.qtstreamx.dex.discovery.cli;
 
+import com.qtsurfer.qtstreamx.dex.capture.csv.QtsurferTickerCsvFormatter;
 import com.qtsurfer.qtstreamx.evm.rpc.EvmRpcException;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -22,6 +24,7 @@ final class DexDiscoveryCliApplication {
             "qtstreamx-dex-discovery uniswap token --network <name> <token>",
             "qtstreamx-dex-discovery uniswap pool --network <name> <pool>",
             "qtstreamx-dex-discovery uniswap capture --network <name> --version <v2|v3> --start-block <n> --out <events.csv> <reviewed-contract>",
+            "qtstreamx-dex-discovery uniswap format --source <events.csv> --out <ticks.csv>",
             "qtstreamx-dex-discovery uniswap scan --network <name> --version <v2|v3> --from <n> --to <n>",
             "qtstreamx-dex-discovery uniswap search --network <name> --version <v2|v3> --query <text> --from <n> --to <n>");
 
@@ -117,6 +120,17 @@ final class DexDiscoveryCliApplication {
             case CAPTURE -> {
                 validateCaptureOptions(request);
                 yield new UniswapCaptureCommand().capture(request, endpoints);
+            }
+            case FORMAT -> {
+                request.requireNoArguments();
+                request.rejectUnknownOptions(Set.of("source", "out"));
+                try {
+                    new QtsurferTickerCsvFormatter().format(
+                            Path.of(request.requiredOption("source")), Path.of(request.requiredOption("out")));
+                } catch (IOException exception) {
+                    throw new IllegalArgumentException(exception.getMessage(), exception);
+                }
+                yield CliResponse.ok(request, List.of(request.requiredOption("out")));
             }
             case INTERACTIVE -> throw new IllegalStateException("interactive request was not resolved");
         };

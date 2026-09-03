@@ -24,6 +24,7 @@ record CliRequest(
         TOKEN,
         POOL,
         CAPTURE,
+        FORMAT,
         SCAN,
         SEARCH,
         HELP
