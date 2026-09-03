@@ -6,6 +6,13 @@ All notable public QTStreamX changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0-rc.3] — 2026-09-03
+
+### Added
+
+- `uniswap format` converts a completed DEX trade capture into a QTSurfer ticker
+  dataset CSV, preserving microsecond timestamps and plain decimal values.
+
 ### Changed
 
 - The DEX discovery CLI now validates the provider configuration before an
