@@ -1,6 +1,104 @@
-# QTStreamX
+<h1 align="center">QTStreamX</h1>
 
-High-performance normalized crypto market data streaming library for the JVM.
+<p align="center">
+  <a href="https://github.com/QTSurfer/qtstreamx/actions/workflows/build.yml"><img src="https://github.com/QTSurfer/qtstreamx/actions/workflows/build.yml/badge.svg" alt="Build"></a>
+  <a href="https://github.com/QTSurfer/qtstreamx/actions/workflows/native.yml"><img src="https://github.com/QTSurfer/qtstreamx/actions/workflows/native.yml/badge.svg" alt="Native CLI"></a>
+  <a href="https://github.com/QTSurfer/qtstreamx/releases"><img src="https://img.shields.io/github/v/release/QTSurfer/qtstreamx?include_prereleases&label=release" alt="Release"></a>
+  <a href="https://jitpack.io/#QTSurfer/qtstreamx"><img src="https://jitpack.io/v/QTSurfer/qtstreamx.svg" alt="JitPack"></a>
+  <img src="https://img.shields.io/badge/JDK-25%2B-blue?logo=openjdk&logoColor=white" alt="JDK 25+">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
+</p>
+
+<p align="center">
+  High-performance normalized crypto market data streaming for the JVM, from <a href="https://www.qtsurfer.com">QTSurfer</a>: centralized-exchange WebSocket feeds and on-chain Uniswap v2/v3 swaps behind one set of interfaces.
+</p>
+
+<p align="center">
+  <code>com.qtsurfer.qtstreamx</code> · <a href="https://www.qtsurfer.com">www.qtsurfer.com</a>
+</p>
+
+---
+
+QTStreamX separates exchange logic, WebSocket client, codec, and transport behind small interfaces, so you pick the pieces that fit your stack and swap any of them without touching the rest.
+
+- **Normalized model** — tickers, klines, funding rates, and DEX trades as Java records with microsecond timestamps.
+- **Seven exchanges** — Binance, Bybit, OKX, Kraken, Bitget, Gate.io, and HTX, with managed connection pools, reconnect, and instrument refresh.
+- **Uniswap v2/v3** — confirmed, deduplicated swaps with HTTP catch-up and active/passive provider failover, plus a read-only discovery CLI.
+- **Pick your parts** — JSON or MessagePack codecs, JDK or Java-WebSocket clients, NATS transport; each is its own module.
+- **Light by default** — `qtstreamx-core` has no heavy dependencies; the JDK WebSocket client has none at all.
+- **JDK 25+**.
+
+## Installation
+
+### JitPack
+
+Add the repository and the modules you need (replace `0.1.0-rc.4` with a published tag):
+
+```xml
+<repositories>
+  <repository>
+    <id>jitpack.io</id>
+    <url>https://jitpack.io</url>
+  </repository>
+</repositories>
+
+<dependency>
+  <groupId>com.qtsurfer.qtstreamx</groupId>
+  <artifactId>qtstreamx-link</artifactId>
+  <version>0.1.0-rc.4</version>
+</dependency>
+```
+
+```kotlin
+repositories { maven("https://jitpack.io") }
+
+dependencies {
+    implementation("com.qtsurfer.qtstreamx:qtstreamx-link:0.1.0-rc.4")
+}
+```
+
+The [module table](#modules) lists every published artifact. The CLI, canary, and
+benchmark are source/application modules rather than JitPack libraries; CLI JVM and
+native distributions for Linux AMD64, macOS ARM64, and Windows AMD64 are attached to
+[GitHub Releases](https://github.com/QTSurfer/qtstreamx/releases).
+
+**Only release tags build on JitPack.** `jitpack.yml` requires the requested version to
+match the repository's `VERSION` file exactly, so branch and commit snapshots such as
+`main-SNAPSHOT` deliberately fail. This keeps every resolvable JitPack coordinate tied
+to a tagged, tested release.
+
+### Local build
+
+To consume unreleased work, clone the repository and publish the approved libraries to
+your local Maven repository:
+
+```sh
+./gradlew publishToMavenLocal
+```
+
+The root project is an aggregate and is not a published dependency artifact.
+
+## Quick start
+
+Subscribe to Binance spot tickers with the zero-dependency JDK WebSocket client
+(`qtstreamx-exchange-binance` + `qtstreamx-ws-native`):
+
+```java
+import com.qtsurfer.qtstreamx.core.client.StreamClientConfig;
+import com.qtsurfer.qtstreamx.core.model.Instrument;
+import com.qtsurfer.qtstreamx.exchange.binance.BinanceStreamClient;
+import com.qtsurfer.qtstreamx.ws.jdk.JdkWebSocketClient;
+
+var client = BinanceStreamClient.spot(StreamClientConfig.withDefaults(JdkWebSocketClient::new));
+client.connect();
+client.subscribeTicker(new Instrument("BTC", "USDT"), ticker -> System.out.println(ticker));
+```
+
+For many instruments, use [`qtstreamx-link`](qtstreamx-link/README.md): it partitions
+subscriptions across connections within exchange limits, reconnects dropped or silent
+links, and renews sockets before they expire. For DEX capture, see
+[Uniswap market data](#uniswap-market-data) and the
+[DEX discovery CLI](qtstreamx-dex-discovery-cli/README.md).
 
 ## Why
 
@@ -178,45 +276,6 @@ development tools.
 | [`qtstreamx-canary`](qtstreamx-canary/README.md) | CEX capture plus explicit and discovery-driven Uniswap verification | no | adapters, discovery, Jackson |
 | `qtstreamx-benchmark` | JMH benchmarks (Jackson, simdjson, fastjson2, Gson) | no | JMH |
 
-## JitPack and local development
-
-QTStreamX libraries are distributed through JitPack. Add the repository and a
-module dependency (replace `0.1.0-rc.1` with a published tag):
-
-```xml
-<repositories>
-  <repository>
-    <id>jitpack.io</id>
-    <url>https://jitpack.io</url>
-  </repository>
-</repositories>
-
-<dependency>
-  <groupId>com.qtsurfer.qtstreamx</groupId>
-  <artifactId>qtstreamx-link</artifactId>
-  <version>0.1.0-rc.1</version>
-</dependency>
-```
-
-For local development, publish the approved libraries to the local Maven
-repository:
-
-```sh
-cd qtstreamx
-./gradlew publishToMavenLocal
-```
-
-The root project is an aggregate and is not a published dependency artifact.
-The CLI, canary, and benchmark are source/application modules rather than
-JitPack libraries. CLI JVM and native distributions for Linux AMD64, macOS
-ARM64, and Windows AMD64 are attached to GitHub Releases.
-
-**Only release tags build on JitPack.** `jitpack.yml` requires the requested
-version to match the repository's `VERSION` file exactly, so branch and commit
-snapshots such as `main-SNAPSHOT` deliberately fail. This keeps every resolvable
-JitPack coordinate tied to a tagged, tested release. To consume unreleased work,
-clone the repository and run `./gradlew publishToMavenLocal`.
-
 ## Model
 
 All exchange data is normalized into Java records with microsecond timestamps:
@@ -326,7 +385,8 @@ bounded Uniswap lookup path through menus, commands, and stable JSON. Both
 Uniswap paths have deterministic disconnect recovery coverage and opt-in
 Ethereum and Robinhood mainnet canaries that produce trade, ticker, and candle
 artifacts. Durable capture can select an active/passive provider bundle without
-changing the market or stream identity.
+changing the market or stream identity. Bounded historical replay of confirmed
+logs over a closed block range is available through `EvmRpcHistoricalLogStream`.
 
 ## Project documentation
 
@@ -337,6 +397,7 @@ changing the market or stream identity.
 - [SUPPORT.md](SUPPORT.md) — how to ask for help
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) — dependency attribution
+- [QTSurfer](https://www.qtsurfer.com) — the platform QTStreamX is built for
 
 ## License
 

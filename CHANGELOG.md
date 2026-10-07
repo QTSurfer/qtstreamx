@@ -6,6 +6,11 @@ All notable public QTStreamX changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The README has a badge header, an installation section with Maven and Gradle
+  snippets, and a quick start.
+
 ## [0.1.0-rc.4] — 2026-10-07
 
 ### Added
