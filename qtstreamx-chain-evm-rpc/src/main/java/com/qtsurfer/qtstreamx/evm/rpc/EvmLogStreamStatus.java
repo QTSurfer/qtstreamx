@@ -8,6 +8,8 @@ public enum EvmLogStreamStatus {
     RECOVERING,
     /** Catch-up completed and the live WebSocket is connected. */
     LIVE,
+    /** A bounded historical range was fully replayed; the stream will not go live. */
+    COMPLETED,
     /** The missing safe interval exceeded the configured recovery ceiling. */
     GAP_EXHAUSTED,
     /** An unrecoverable checkpoint or acknowledgement transition failed. */

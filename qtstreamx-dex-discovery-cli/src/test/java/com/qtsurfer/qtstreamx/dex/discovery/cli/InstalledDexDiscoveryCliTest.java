@@ -18,6 +18,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Black-box contract tests for the installed DEX discovery executable. */
 class InstalledDexDiscoveryCliTest {
+    private static final List<String> JVM_OPTION_VARIABLES =
+            List.of("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS");
     private static Path executable;
     private static final String ROBINHOOD_POOL =
             "0x52e65b17fb6e5ba00ed806f37afcd2daa50271ca";
@@ -114,7 +116,11 @@ class InstalledDexDiscoveryCliTest {
         List<String> command = new ArrayList<>();
         command.add(executable.toString());
         command.addAll(Arrays.asList(arguments));
-        Process process = new ProcessBuilder(command).start();
+        ProcessBuilder builder = new ProcessBuilder(command);
+        // The JVM announces these variables on stderr ("Picked up JAVA_TOOL_OPTIONS: ..."), which
+        // is not output of the executable under test. Build hosts such as JitPack export them.
+        builder.environment().keySet().removeAll(JVM_OPTION_VARIABLES);
+        Process process = builder.start();
         process.getOutputStream().write(input.getBytes(StandardCharsets.UTF_8));
         process.getOutputStream().close();
         int exitCode = process.waitFor();

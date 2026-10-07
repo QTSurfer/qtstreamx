@@ -9,14 +9,17 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -138,11 +141,30 @@ public final class Link {
       Collections.synchronizedSet(new LinkedHashSet<>());
 
   private final AtomicReference<StreamClient> current = new AtomicReference<>();
+
+  /**
+   * Every client this link has created and not yet closed. Normally holds exactly the current
+   * client (or none while reconnecting); anything beyond that is a client nobody will ever close —
+   * a live socket still feeding the sinks, which shows up downstream as duplicated data. Compared
+   * by identity, closed at most once.
+   */
+  private final Set<StreamClient> liveClients =
+      Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
+
+  /**
+   * True from the moment a reconnect starts replacing the client until the replacement is
+   * installed (including the backoff waits between failed attempts). Reconnects are triggered from
+   * several places — preemptive renewal, a dropped socket, the silence watchdog, a forced
+   * reconnect-all — on a scheduler with more than one thread. Two of them running at once each
+   * open a client and the second install silently replaces the first, which is never closed.
+   */
+  private final AtomicBoolean reconnecting = new AtomicBoolean();
+
   private final AtomicInteger reconnectFailures = new AtomicInteger();
   private final AtomicLong connectedAtEpochMs = new AtomicLong();
   /** Epoch ms at which the link became disconnected; 0 means currently up or never connected. */
   private final AtomicLong disconnectedAtEpochMs = new AtomicLong();
-  private volatile ScheduledFuture<?> renewalTask;
+  private final AtomicReference<ScheduledFuture<?>> renewalTask = new AtomicReference<>();
   private volatile boolean closed;
 
   /**
@@ -245,7 +267,7 @@ public final class Link {
       subscribed.clear();
       subscribed.addAll(initialInstruments);
     }
-    openAndSubscribe();
+    announce(openAndInstall());
     scheduleRenewal();
   }
 
@@ -277,16 +299,18 @@ public final class Link {
   /** Close permanently. No more reconnects. */
   public void close() {
     closed = true;
-    ScheduledFuture<?> r = renewalTask;
-    if (r != null) r.cancel(false);
+    cancelRenewal();
     StreamClient sc = current.getAndSet(null);
-    if (sc != null) {
-      try {
-        sc.close();
-      } catch (Exception e) {
-        log.debug("{} close error: {}", cfg.id(), e.getMessage());
-      }
-    }
+    if (sc != null) closeClient(sc);
+  }
+
+  /**
+   * Number of stream clients this link has opened and not closed. One while connected, zero while
+   * reconnecting or closed. Anything higher is a leak: a client still holding a socket that no
+   * reconnect will ever close.
+   */
+  public int openClients() {
+    return liveClients.size();
   }
 
   /** Milliseconds since the current WebSocket was (re)connected. */
@@ -341,7 +365,16 @@ public final class Link {
   // Internals
   // --------------------------------------------------------------------------
 
-  private void openAndSubscribe() throws Exception {
+  /** What {@link #openAndInstall()} hands to {@link #announce}: how many instruments, how long down. */
+  private record Opened(int instruments, Duration outage) {}
+
+  /**
+   * Open a client, subscribe everything, connect it and make it the link's current client.
+   * Returns {@code null} when the link was closed while this was in flight, in which case the new
+   * client has already been closed. Never leaves a client behind: any failure closes it before the
+   * exception propagates.
+   */
+  private Opened openAndInstall() throws Exception {
     // Gate EVERY socket open (initial subscribe, reconnect, preemptive renewal) through the
     // per-IP/per-exchange connection-rate limiter so a node never self-inflicts a connection-rate
     // ban. Blocks/trickles under a reconnect storm; aborts promptly if the link is closing. The
@@ -349,40 +382,76 @@ public final class Link {
     // exchange counts it.
     cfg.connectionRateLimiter().acquire(() -> closed);
     StreamClient sc = cfg.streamClientFactory().get();
-    // Wire disconnect BEFORE connect so any drop — including during the initial
-    // handshake — flows into the reconnect backoff path.
-    sc.onDisconnect(() -> onStreamDisconnect(sc));
-    // Subscribe every instrument BEFORE connect (Binance embeds streams in the URL).
-    Set<Instrument> snapshot;
-    synchronized (subscribed) {
-      snapshot = Set.copyOf(subscribed);
+    liveClients.add(sc);
+    boolean installed = false;
+    try {
+      // Wire disconnect BEFORE connect so any drop — including during the initial
+      // handshake — flows into the reconnect backoff path.
+      sc.onDisconnect(() -> onStreamDisconnect(sc));
+      // Subscribe every instrument BEFORE connect (Binance embeds streams in the URL).
+      Set<Instrument> snapshot;
+      synchronized (subscribed) {
+        snapshot = Set.copyOf(subscribed);
+      }
+      for (Instrument ins : snapshot) {
+        subscribeOne(sc, ins);
+      }
+      sc.connect();
+      StreamClient previous = current.getAndSet(sc);
+      installed = true;
+      if (previous != null && previous != sc) {
+        // Nothing should still be installed here; if something is, it is a client that would
+        // otherwise be orphaned with an open socket.
+        log.warn("{} replacing a client that was still installed — closing it", cfg.id());
+        closeClient(previous);
+      }
+      if (closed) {
+        // close() ran while this connect was in flight and may have looked at `current` before
+        // the install above, so it cannot be relied on to see this client.
+        current.compareAndSet(sc, null);
+        closeClient(sc);
+        return null;
+      }
+      long now = System.currentTimeMillis();
+      long downSince = disconnectedAtEpochMs.getAndSet(0);
+      Duration outage = downSince == 0 ? Duration.ZERO : Duration.ofMillis(now - downSince);
+      connectedAtEpochMs.set(now);
+      reconnectFailures.set(0);
+      // A clean connect tells the shared limiter the exchange is no longer throttling this IP,
+      // so its adaptive backpressure decays back towards the steady-state rate.
+      cfg.connectionRateLimiter().onSuccess();
+      return new Opened(snapshot.size(), outage);
+    } catch (Throwable t) {
+      if (!installed) closeClient(sc);
+      throw t;
     }
-    for (Instrument ins : snapshot) {
-      subscribeOne(sc, ins);
-    }
-    sc.connect();
-    current.set(sc);
-    long now = System.currentTimeMillis();
-    long downSince = disconnectedAtEpochMs.getAndSet(0);
-    Duration outage = downSince == 0 ? Duration.ZERO : Duration.ofMillis(now - downSince);
-    connectedAtEpochMs.set(now);
-    reconnectFailures.set(0);
-    // A clean connect tells the shared limiter the exchange is no longer throttling this IP,
-    // so its adaptive backpressure decays back towards the steady-state rate.
-    cfg.connectionRateLimiter().onSuccess();
-    if (outage.isZero()) {
-      log.info("{} connected with {} instruments", cfg.id(), snapshot.size());
+  }
+
+  private void announce(Opened opened) {
+    if (opened == null) return;
+    if (opened.outage().isZero()) {
+      log.info("{} connected with {} instruments", cfg.id(), opened.instruments());
     } else {
       log.info(
           "{} reconnected with {} instruments after {} ms outage",
           cfg.id(),
-          snapshot.size(),
-          outage.toMillis());
+          opened.instruments(),
+          opened.outage().toMillis());
     }
     try {
-      cfg.lifecycleListener().onConnected(cfg.id(), snapshot.size(), outage);
+      cfg.lifecycleListener().onConnected(cfg.id(), opened.instruments(), opened.outage());
     } catch (RuntimeException e) {
       log.warn("{} listener.onConnected threw: {}", cfg.id(), e.getMessage());
+    }
+  }
+
+  /** Close a client exactly once, whoever gets there first. */
+  private void closeClient(StreamClient sc) {
+    if (!liveClients.remove(sc)) return;
+    try {
+      sc.close();
+    } catch (Exception e) {
+      log.debug("{} client close: {}", cfg.id(), e.getMessage());
     }
   }
 
@@ -426,13 +495,38 @@ public final class Link {
     }
   }
 
+  /**
+   * Arm the one preemptive-renewal timer, cancelling whichever was armed before. Every successful
+   * connect calls this, including the ones caused by a dropped socket or a forced reconnect rather
+   * than by a renewal; without the cancel each of those left an extra timer behind, and since every
+   * timer re-arms itself when it fires, the number of live timers per link only ever grew. A link
+   * with many of them renews many times a day, and the renewals land close enough together to
+   * overlap.
+   */
   private void scheduleRenewal() {
+    if (closed) return;
     Duration delay = cfg.wsLimits().renewBefore();
-    renewalTask = cfg.scheduler().schedule(this::renew, delay.toMillis(), TimeUnit.MILLISECONDS);
+    ScheduledFuture<?> next =
+        cfg.scheduler().schedule(this::renew, delay.toMillis(), TimeUnit.MILLISECONDS);
+    ScheduledFuture<?> previous = renewalTask.getAndSet(next);
+    if (previous != null) previous.cancel(false);
+    if (closed) cancelRenewal();
+  }
+
+  private void cancelRenewal() {
+    ScheduledFuture<?> r = renewalTask.getAndSet(null);
+    if (r != null) r.cancel(false);
   }
 
   private void renew() {
     if (closed) return;
+    if (reconnecting.get()) {
+      // A reconnect is already replacing the client, which is all a renewal would do. Keep the
+      // timer armed in case that reconnect never gets as far as arming it.
+      log.debug("{} renewal skipped: reconnect already in flight", cfg.id());
+      scheduleRenewal();
+      return;
+    }
     log.info("{} preemptive renewal", cfg.id());
     reconnectWithBackoff(0);
   }
@@ -440,19 +534,32 @@ public final class Link {
   /**
    * Reopen the WebSocket and re-subscribe. Retries with exponential backoff
    * (capped at 60 s) as long as the link isn't closed.
+   *
+   * <p>One reconnect at a time per link: a request that arrives while another is replacing the
+   * client is dropped, because that reconnect ends in a fresh client anyway.
    */
   public void reconnectWithBackoff(int attempt) {
     if (closed) return;
+    if (!reconnecting.compareAndSet(false, true)) {
+      log.debug("{} reconnect already in flight — request dropped", cfg.id());
+      return;
+    }
+    reconnectAttempt(attempt);
+  }
+
+  private void reconnectAttempt(int attempt) {
+    boolean released = false;
+    boolean retryScheduled = false;
     try {
+      if (closed) return;
       StreamClient old = current.getAndSet(null);
-      if (old != null) {
-        try {
-          old.close();
-        } catch (Exception e) {
-          log.debug("{} old close: {}", cfg.id(), e.getMessage());
-        }
-      }
-      openAndSubscribe();
+      if (old != null) closeClient(old);
+      Opened opened = openAndInstall();
+      // The replacement is installed: anything that arrives from here on (a drop of the new
+      // client, the next renewal) has a client to act on, so let it through.
+      reconnecting.set(false);
+      released = true;
+      announce(opened);
       scheduleRenewal();
     } catch (InterruptedException ie) {
       // The connection-rate gate aborted our wait because the link is closing. Restore the
@@ -476,8 +583,16 @@ public final class Link {
       } catch (RuntimeException re) {
         log.warn("{} listener.onReconnectFailed threw: {}", cfg.id(), re.getMessage());
       }
-      cfg.scheduler().schedule(() -> reconnectWithBackoff(attempt + 1),
-          backoffMs, TimeUnit.MILLISECONDS);
+      try {
+        // Still the same reconnect: the flag stays set across the wait.
+        cfg.scheduler().schedule(() -> reconnectAttempt(attempt + 1),
+            backoffMs, TimeUnit.MILLISECONDS);
+        retryScheduled = true;
+      } catch (RejectedExecutionException rejected) {
+        log.debug("{} retry not scheduled (scheduler shut down)", cfg.id());
+      }
+    } finally {
+      if (!released && !retryScheduled) reconnecting.set(false);
     }
   }
 

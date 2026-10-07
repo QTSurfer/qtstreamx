@@ -7,6 +7,10 @@ package com.qtsurfer.qtstreamx.aggregation;
  * @param durationMicros interval duration in microseconds
  */
 public record CandleInterval(String name, long durationMicros) {
+    /** One-second fixed interval. */
+    public static final CandleInterval ONE_SECOND =
+            new CandleInterval("1s", 1_000_000L);
+
     /** One-minute fixed interval. */
     public static final CandleInterval ONE_MINUTE =
             new CandleInterval("1m", 60_000_000L);

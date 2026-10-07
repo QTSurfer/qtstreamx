@@ -203,6 +203,42 @@ class MarketDataAggregatorTest {
         });
     }
 
+    @Test
+    void oneSecondBucketsStayMostlyEmptyAcrossRealEvmBlockSpacing() {
+        // Characterizes the actual output shape at CandleInterval.ONE_SECOND when trades
+        // arrive at real EVM block cadence (~12s on Ethereum mainnet, block-granular
+        // timestamps shared by every trade in the same block) rather than assuming a
+        // synthetic even spacing. The aggregator never synthesizes an empty bucket
+        // (advanceWatermark only closes buckets a trade already opened), so a "1s" series
+        // over block-spaced trades is one non-empty candle roughly every 12 buckets, not a
+        // contiguous 1s grid. A consumer deriving a fixed cadence from these candles' own
+        // spacing should expect gaps at block-time scale, not sub-block scale.
+        List<MarketKline> oneSecondKlines = new ArrayList<>();
+        MarketDataAggregator oneSecondAggregator = new MarketDataAggregator(
+                CandleInterval.ONE_SECOND, ignored -> {}, oneSecondKlines::add);
+
+        oneSecondAggregator.accept(trade(MARKET, "block-100-a", "100", "1", "100", 120_000_000L));
+        oneSecondAggregator.accept(trade(MARKET, "block-100-b", "101", "1", "101", 120_000_000L));
+        oneSecondAggregator.accept(trade(MARKET, "block-101-a", "102", "1", "102", 132_000_000L));
+        oneSecondAggregator.accept(trade(MARKET, "block-102-a", "103", "1", "103", 144_000_000L));
+        oneSecondAggregator.advanceWatermark(144_999_999L);
+
+        List<Long> closedBucketOpenTimes = oneSecondKlines.stream()
+                .map(MarketKline::kline)
+                .filter(com.qtsurfer.qtstreamx.core.model.Kline::closed)
+                .map(com.qtsurfer.qtstreamx.core.model.Kline::timestamp)
+                .distinct()
+                .toList();
+
+        assertThat(closedBucketOpenTimes).containsExactly(120_000_000L, 132_000_000L, 144_000_000L);
+        assertThat(closedBucketOpenTimes.get(1) - closedBucketOpenTimes.get(0))
+                .as("modal gap between non-empty 1s buckets at real block cadence")
+                .isEqualTo(12_000_000L);
+        assertThat(oneSecondKlines.stream().filter(k -> k.kline().timestamp() == 120_000_000L)
+                .map(k -> k.kline().numberOfTrades()).reduce((first, second) -> second))
+                .contains(2L);
+    }
+
     private static MarketTrade trade(
             MarketId market,
             String eventId,

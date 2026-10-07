@@ -14,7 +14,7 @@ public interface EvmRpcReader {
      */
     long latestBlockNumber();
 
-    /** Reads one canonical block by number, including its Unix timestamp in seconds. */
+    /** Reads one canonical block by number, including its timestamp in epoch microseconds. */
     default EvmBlock block(long blockNumber) {
         throw new UnsupportedOperationException("Block reads are not supported");
     }

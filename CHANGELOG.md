@@ -6,6 +6,40 @@ All notable public QTStreamX changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0-rc.4] — 2026-10-07
+
+### Added
+
+- `EvmRpcHistoricalLogStream` replays confirmed logs over one closed block range
+  over JSON-RPC HTTP only: no WebSocket, no checkpoint, and no replay ceiling, because
+  an explicitly bounded range is not a backlog. Replaying the same range against
+  unchanged chain state emits the same logs in the same order. A range that is not yet
+  confirmed is rejected with `EvmHistoricalRangeNotFinalizedException`, and a finished
+  replay reports the new `EvmLogStreamStatus.COMPLETED`.
+- `CandleInterval.ONE_SECOND`.
+- `Link.openClients()` and `LinkManager.openClientCount()` report how many stream
+  clients a link has opened and not closed. It is one per connected link; a higher
+  number means clients were orphaned with their socket still open.
+
+### Fixed
+
+- A `Link` could leave a stream client open forever, still delivering data to the
+  link's sinks, so the exchange saw more connections than links and every message
+  arrived more than once. Two reconnects running at the same time (a renewal and a
+  dropped socket, for example) each opened a client and the second replaced the
+  first without closing it. Reconnects are now one at a time per link, and a client
+  is closed on every path that abandons it: a failed connect, a replaced client, or
+  a link closed while a reconnect was in flight.
+- Every successful reconnect armed another preemptive-renewal timer without
+  cancelling the previous one, and each timer re-armed itself, so a link that had
+  dropped a few times renewed several times a day and the renewals could overlap.
+  A link now holds a single renewal timer.
+- `EvmBlockTimestampResolver` compared its epoch-seconds input against block
+  timestamps in epoch microseconds, so every lookup resolved to block 0.
+- The installed-CLI tests failed on build hosts that export `JAVA_TOOL_OPTIONS`,
+  because the JVM's own notice on standard error was counted as output of the
+  executable under test. They no longer inherit the JVM option variables.
+
 ## [0.1.0-rc.3] — 2026-09-03
 
 ### Added

@@ -497,6 +497,18 @@ public final class LinkManager implements AutoCloseable {
   }
 
   /**
+   * Stream clients opened and not yet closed, across all links. Equals {@link #linkCount()} when
+   * every link is connected and fewer while some are reconnecting; MORE than the link count means
+   * clients were orphaned — each one a live exchange socket delivering duplicates that nothing will
+   * ever close. Worth exporting as a gauge next to the link count.
+   */
+  public int openClientCount() {
+    synchronized (links) {
+      return links.stream().mapToInt(Link::openClients).sum();
+    }
+  }
+
+  /**
    * Cumulative market-data messages received across all links (ticker+kline+frate). A stalled
    * counter while {@link #connectedLinkCount()} stays positive is the "connected but silent" zombie
    * signal a watchdog uses to trigger {@link #reconnectAll()}.
