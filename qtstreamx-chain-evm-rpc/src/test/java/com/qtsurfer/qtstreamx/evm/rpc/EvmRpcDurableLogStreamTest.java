@@ -59,8 +59,9 @@ class EvmRpcDurableLogStreamTest {
             assertThat(stream.status()).isEqualTo(EvmLogStreamStatus.LIVE);
         }
 
-        assertThat(firstProvider.requestedRanges).containsExactly("100-101");
-        assertThat(replacementProvider.requestedRanges).containsExactly("100-102");
+        // each reads the confirmed history, then, once subscribed, the blocks up to the head that came after it
+        assertThat(firstProvider.requestedRanges).containsExactly("100-101", "102-103");
+        assertThat(replacementProvider.requestedRanges).containsExactly("100-102", "103-104");
         assertThat(replacementBatches).singleElement().satisfies(batch -> {
             assertThat(batch.streamId()).isEqualTo(STREAM_ID);
             assertThat(batch.fromBlock()).isEqualTo(102);

@@ -16,6 +16,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -54,6 +56,13 @@ public final class EvmRpcLogStream implements EvmLogStream {
     private long duplicateSuppressions;
     private long terminalFailures;
     private boolean restoredCheckpoint;
+    // The blocks mined while the history was read are fetched after the WebSocket is subscribed. Until that
+    // last pass has run, a new head must not release anything: it would move the cursor past blocks that
+    // were never fetched. The highest head seen meanwhile is released once the pass is done.
+    private boolean holdReleases;
+    private long highestHeadSeen = -1;
+    private volatile Duration subscriptionAckTimeout = Duration.ZERO;
+    private volatile CountDownLatch subscriptionAcks = new CountDownLatch(0);
     private volatile boolean closed;
     private volatile boolean terminal;
     private volatile EvmLogStreamStatus status = EvmLogStreamStatus.IDLE;
@@ -139,6 +148,27 @@ public final class EvmRpcLogStream implements EvmLogStream {
         this.committedThrough = config.startBlock() - 1;
     }
 
+    /**
+     * Asks the stream to wait, before it fetches the blocks mined while it connected, until the provider has
+     * acknowledged both subscriptions (logs and new heads), for at most {@code timeout}.
+     *
+     * <p>A subscription delivers only what is mined after it is active, and it becomes active when the
+     * provider answers, not when the request is sent. The head the last pass reads has to be read after
+     * that, or a block mined in between belongs to neither the history nor the subscription. A provider
+     * that does not answer within the timeout fails the connection, so that it is retried, instead of
+     * opening a gap silently. Zero, the default, does not wait.
+     *
+     * @return this stream, for chaining; call it before {@code start}
+     */
+    public EvmRpcLogStream awaitSubscriptionAcks(Duration timeout) {
+        Objects.requireNonNull(timeout, "timeout");
+        if (timeout.isNegative()) {
+            throw new IllegalArgumentException("timeout must not be negative");
+        }
+        this.subscriptionAckTimeout = timeout;
+        return this;
+    }
+
     @Override
     public void start(EvmLogFilter filter, Consumer<EvmLog> handler) throws Exception {
         requireStartable();
@@ -149,8 +179,8 @@ public final class EvmRpcLogStream implements EvmLogStream {
         logHandler = Objects.requireNonNull(handler, "handler");
         status = EvmLogStreamStatus.RECOVERING;
         try {
-            catchUp();
-            connectWebSocket();
+            catchUp(false);
+            connectAndCloseGap();
             status = EvmLogStreamStatus.LIVE;
         } catch (Exception exception) {
             markTerminal(exception);
@@ -169,8 +199,8 @@ public final class EvmRpcLogStream implements EvmLogStream {
         status = EvmLogStreamStatus.RECOVERING;
         try {
             restoreCheckpoint();
-            catchUp();
-            connectWebSocket();
+            catchUp(false);
+            connectAndCloseGap();
             status = EvmLogStreamStatus.LIVE;
         } catch (Exception exception) {
             RuntimeException safeException = safeRecoveryFailure(exception);
@@ -210,7 +240,47 @@ public final class EvmRpcLogStream implements EvmLogStream {
         restoredCheckpoint = true;
     }
 
+    /**
+     * Subscribes and then reads, over HTTP, what was mined since the history was read, up to the head as it
+     * is once the subscription is active. What the subscription delivers meanwhile is buffered and
+     * deduplicated against it, and nothing is released before the pass is done, so each log reaches the
+     * handler once and in chain order.
+     */
+    private void connectAndCloseGap() throws Exception {
+        synchronized (this) {
+            holdReleases = true;
+            highestHeadSeen = -1;
+        }
+        boolean closedGap = false;
+        try {
+            connectWebSocket();
+            awaitSubscriptionAcknowledgements();
+            catchUp(true);
+            closedGap = true;
+        } finally {
+            synchronized (this) {
+                holdReleases = false;
+                if (closedGap && highestHeadSeen >= 0) {
+                    long head = highestHeadSeen;
+                    highestHeadSeen = -1;
+                    releaseConfirmed(head);
+                }
+            }
+        }
+    }
+
+    private void awaitSubscriptionAcknowledgements() throws InterruptedException {
+        Duration timeout = subscriptionAckTimeout;
+        if (timeout.isZero()) {
+            return;
+        }
+        if (!subscriptionAcks.await(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
+            throw new IllegalStateException("The provider did not acknowledge the subscriptions in time");
+        }
+    }
+
     private void connectWebSocket() throws Exception {
+        subscriptionAcks = new CountDownLatch(2);
         webSocket = webSocketFactory.get();
         webSocket.onMessage(this::handleMessage);
         webSocket.onClose((code, reason) -> reconnect());
@@ -268,8 +338,8 @@ public final class EvmRpcLogStream implements EvmLogStream {
 
     private void reconnectAttempt(int retries) {
         try {
-            catchUp();
-            connectWebSocket();
+            catchUp(false);
+            connectAndCloseGap();
             reconnecting.set(false);
             status = EvmLogStreamStatus.LIVE;
         } catch (Exception exception) {
@@ -299,17 +369,20 @@ public final class EvmRpcLogStream implements EvmLogStream {
         return delay.compareTo(MAX_RECONNECT_DELAY) > 0 ? MAX_RECONNECT_DELAY : delay;
     }
 
-    private synchronized void catchUp() throws Exception {
+    private synchronized void catchUp(boolean toHead) throws Exception {
         long latestBlock = httpClient.latestBlockNumber();
-        long safeBlock = latestBlock - config.confirmationDepth();
-        if (recoveryPolicy != null && restoredCheckpoint && safeBlock < committedThrough) {
+        long confirmedBlock = latestBlock - config.confirmationDepth();
+        // The first pass reads what is confirmed. The last one, after subscribing, reads up to the head: the
+        // unconfirmed tail waits in pending and is checked against the canonical chain when it is released.
+        long safeBlock = toHead ? latestBlock : confirmedBlock;
+        if (recoveryPolicy != null && restoredCheckpoint && confirmedBlock < committedThrough) {
             throw new EvmStaleHeadException(
                     recoveryPolicy.streamId(),
-                    safeBlock,
+                    confirmedBlock,
                     committedThrough,
                     recoveryPolicy.upstreamId());
         }
-        long missingBlocks = Math.max(0, safeBlock - committedThrough);
+        long missingBlocks = Math.max(0, confirmedBlock - committedThrough);
         cursorLagBlocks = missingBlocks;
         if (recoveryPolicy != null && missingBlocks > recoveryPolicy.maxReplayBlocks()) {
             status = EvmLogStreamStatus.GAP_EXHAUSTED;
@@ -320,7 +393,9 @@ public final class EvmRpcLogStream implements EvmLogStream {
                     recoveryPolicy.maxReplayBlocks(),
                     recoveryPolicy.upstreamId());
         }
-        long fromBlock = recoveryPolicy == null
+        // The overlap re-reads blocks already committed, to validate a restored checkpoint against the chain; the
+        // last pass follows the first one in the same session, so it starts right after the cursor.
+        long fromBlock = recoveryPolicy == null || toHead
                 ? Math.max(config.startBlock(), committedThrough + 1)
                 : Math.max(
                         config.startBlock(),
@@ -331,7 +406,7 @@ public final class EvmRpcLogStream implements EvmLogStream {
             fromBlock = toBlock + 1;
         }
         releaseConfirmed(latestBlock);
-        cursorLagBlocks = Math.max(0, safeBlock - committedThrough);
+        cursorLagBlocks = Math.max(0, confirmedBlock - committedThrough);
     }
 
     private void fetchRange(long fromBlock, long toBlock) {
@@ -359,11 +434,15 @@ public final class EvmRpcLogStream implements EvmLogStream {
                 throw new IllegalStateException(
                         "JSON-RPC request failed with code " + error.path("code").asInt());
             }
+            if (root.has("id") && root.has("result") && !root.has("params")) {
+                subscriptionAcks.countDown();
+                return;
+            }
             JsonNode result = root.path("params").path("result");
             if (result.has("address")) {
                 bufferLog(parseLog(result));
             } else if (result.has("number")) {
-                releaseConfirmed(parseHexLong(result.path("number").asText()));
+                onHead(parseHexLong(result.path("number").asText()));
             }
         } catch (Exception exception) {
             if (recoveryPolicy != null) {
@@ -372,6 +451,14 @@ public final class EvmRpcLogStream implements EvmLogStream {
                 errorHandler.accept(exception);
             }
         }
+    }
+
+    private synchronized void onHead(long head) throws Exception {
+        if (holdReleases) {
+            highestHeadSeen = Math.max(highestHeadSeen, head);
+            return;
+        }
+        releaseConfirmed(head);
     }
 
     private synchronized void bufferLog(EvmRpcLog log) {

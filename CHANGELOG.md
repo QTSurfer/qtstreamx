@@ -6,6 +6,25 @@ All notable public QTStreamX changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0-rc.5] — 2026-11-14
+
+### Fixed
+
+- `EvmRpcLogStream` no longer loses the logs of the blocks mined between the end of the history it reads
+  over HTTP and the first block its WebSocket delivers. The history stops at the head minus the confirmation
+  depth, as read when it began, and a `logs` subscription delivers only what is mined after it is active, so
+  those blocks belonged to neither, and on a chain that mines several blocks a second with a history that takes
+  minutes they were minutes of logs. After subscribing, the stream now reads over HTTP everything from its
+  cursor up to the head, buffers what the subscription delivers meanwhile and deduplicates it against that
+  read, and holds back releases until that pass is done, so every log reaches the handler once and in chain
+  order. It applies to `start`, `startRecoverable` and a reconnection.
+
+### Added
+
+- `EvmRpcLogStream.awaitSubscriptionAcks(Duration)` makes the stream read the head for that last pass only after
+  the provider has acknowledged both subscriptions (logs and new heads), and fail the connection, so that it is
+  retried, if it does not do so in time. It is off by default.
+
 ### Changed
 
 - The README has a badge header, an installation section with Maven and Gradle

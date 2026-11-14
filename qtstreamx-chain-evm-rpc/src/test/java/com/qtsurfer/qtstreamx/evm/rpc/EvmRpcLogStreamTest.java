@@ -235,7 +235,8 @@ class EvmRpcLogStreamTest {
         assertThat(emitted)
                 .extracting(EvmLog::transactionHash)
                 .containsExactly("0xtx100", "0xtx101");
-        assertThat(http.requestedRanges).containsExactly("100-101");
+        // the history up to the confirmed head, then what was mined while the new socket subscribed
+        assertThat(http.requestedRanges).containsExactly("100-101", "102-103");
     }
 
     @Test
