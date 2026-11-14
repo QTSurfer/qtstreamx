@@ -27,6 +27,8 @@ All notable public QTStreamX changes are documented here. The format follows
 
 ### Changed
 
+- The macOS ARM64 native build runs on `macos-15`: GitHub no longer provides the `macos-14`
+  runner the workflow used, so the job was cancelled before it started.
 - The README has a badge header, an installation section with Maven and Gradle
   snippets, and a quick start.
 
