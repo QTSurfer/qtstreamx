@@ -48,7 +48,7 @@ jobs:
       - run: ./gradlew :qtstreamx-dex-discovery-cli:nativeCompile :qtstreamx-dex-discovery-cli:nativeTest :qtstreamx-dex-discovery-cli:nativeSmoke --no-daemon
       - name: Upload the test report on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-report-${{ matrix.target }}
           path: qtstreamx-dex-discovery-cli/build/reports/tests/**
@@ -66,7 +66,7 @@ jobs:
           # The execute bit only means anything on Unix; Windows executability
           # comes from the .exe extension, not this permission.
           [ "${{ runner.os }}" = "Windows" ] || chmod 0755 "$dest"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qtstreamx-dex-discovery-${{ matrix.target }}
           path: staging/*
