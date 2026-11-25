@@ -210,7 +210,16 @@ public final class BybitInstrumentsCache implements InstrumentsCache {
                 String quote = sym.path("quoteCoin").asText("");
                 if (base.isEmpty() || quote.isEmpty()) continue;
                 String settle = category.futures ? sym.path("settleCoin").asText(quote) : null;
-                instruments.add(new Instrument(base, quote, settle != null && settle.isEmpty() ? null : settle));
+                Instrument instrument = new Instrument(base, quote, settle != null && settle.isEmpty() ? null : settle);
+                instruments.add(instrument);
+                // The topic must use the LISTED symbol where it is not base+quote (USDC perpetuals are
+                // <BASE>PERP). Only a perpetual names the instrument: a dated future (BTCUSDT-04DEC26)
+                // collapses into the same Instrument as its perpetual and must not take its topic.
+                String contractType = sym.path("contractType").asText("");
+                String listed = sym.path("symbol").asText("");
+                if (category.futures && !"LinearFutures".equals(contractType) && !listed.contains("-")) {
+                    BybitSymbols.registerListed(instrument, listed);
+                }
                 if (category.futures && sym.has("fundingInterval")) {
                     int interval = sym.path("fundingInterval").asInt(0);
                     if (interval > 0) {

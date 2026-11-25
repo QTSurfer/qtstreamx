@@ -6,6 +6,21 @@ All notable public QTStreamX changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0-rc.6] — 2026-11-25
+
+### Fixed
+
+- `BybitStreamClient` subscribes the USDC-settled linear perpetuals by the symbol Bybit lists for them.
+  Bybit names them `<BASE>PERP`, but the topic was built as base plus quote (`tickers.BTCUSDC`), which does not
+  exist, and Bybit rejects the WHOLE subscribe frame that carries an unknown topic: the other topics sharing that
+  frame never streamed either. The listed symbol is read from the instrument listing (`BybitInstrumentsCache`) and
+  only for perpetual contracts, so a dated future never renames its perpetual; an instrument whose symbol is
+  base plus quote keeps it, and so does one that has not been listed.
+- `BybitStreamClient` answers a rejected subscribe frame: the refusal is logged at WARN with the exchange's
+  message, the topics it names are dropped, and the rest of the frame is sent again. Before, the refusal was
+  discarded without a trace and the rest of the frame stayed dead until the next reconnection, which sent the same
+  frame again.
+
 ## [0.1.0-rc.5] — 2026-11-14
 
 ### Fixed

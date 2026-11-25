@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -27,6 +28,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,6 +71,16 @@ public class BybitStreamClient implements StreamClient {
 
     // Subscribe requests queued before connect.
     private final List<String> pendingTopics = new ArrayList<>();
+    /**
+     * The subscribe frames sent on the current socket, as topic lists. Bybit rejects a WHOLE frame
+     * when one of its topics is unknown ({@code {"success":false,"ret_msg":"error:handler not
+     * found,topic:tickers.X"}}) and says nothing more: the other nine topics of the frame just never
+     * stream. Keeping the frames lets a rejection be answered by re-sending the rest of that frame.
+     */
+    private final List<List<String>> sentFrames = new ArrayList<>();
+    /** Topics Bybit refused on this socket; never sent again by this client. */
+    private final Set<String> rejectedTopics = ConcurrentHashMap.newKeySet();
+    private static final Pattern REJECTED_TOPIC = Pattern.compile("topic:([A-Za-z0-9._-]+)");
     // Routing tables keyed by topic (e.g. "tickers.BTCUSDT", "kline.1.BTCUSDT").
     private final Map<String, Subscription<Ticker>> tickerSubs = new ConcurrentHashMap<>();
     private final Map<String, FundingSubscription> fundingSubs = new ConcurrentHashMap<>();
@@ -160,9 +173,13 @@ public class BybitStreamClient implements StreamClient {
         // Subscribe op sends all topics in one frame. Bybit caps each frame at 21k bytes and 10
         // topics per subscribe on some endpoints; our typical pool stays well below that, but
         // split into chunks of 10 defensively — the WS accepts multiple subscribe frames.
-        for (int i = 0; i < pendingTopics.size(); i += 10) {
-            List<String> chunk = pendingTopics.subList(i, Math.min(i + 10, pendingTopics.size()));
-            wsClient.send("{\"op\":\"subscribe\",\"args\":" + toJsonArray(chunk) + "}");
+        synchronized (sentFrames) {
+            sentFrames.clear();
+            for (int i = 0; i < pendingTopics.size(); i += 10) {
+                List<String> chunk = List.copyOf(pendingTopics.subList(i, Math.min(i + 10, pendingTopics.size())));
+                sentFrames.add(chunk);
+                wsClient.send("{\"op\":\"subscribe\",\"args\":" + toJsonArray(chunk) + "}");
+            }
         }
 
         schedulePing();
@@ -344,8 +361,14 @@ public class BybitStreamClient implements StreamClient {
         try {
             JsonNode root = MAPPER.readTree(message);
             // Subscribe ack / pong responses arrive with {"success":true, "op":"subscribe"/"pong"}
-            // — skip anything without a topic.
-            if (!root.has("topic")) return;
+            // and no topic. A FAILED subscribe ack is the only sign that a whole frame is dead, so it
+            // is handled, not skipped.
+            if (!root.has("topic")) {
+                if ("subscribe".equals(root.path("op").asText("")) && !root.path("success").asBoolean(true)) {
+                    onSubscribeRejected(root.path("ret_msg").asText(""));
+                }
+                return;
+            }
 
             String topic = root.get("topic").asText();
             long tsMs = root.path("ts").asLong(0L);
@@ -485,6 +508,48 @@ public class BybitStreamClient implements StreamClient {
             throw new RuntimeException(
                     "bybit linear tickers REST fetch failed: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Bybit refused a subscribe frame. Log it, drop the topics it named, and re-send the rest of
+     * every frame that carried one of them, so one unknown symbol (a delisting, a naming change)
+     * costs that symbol and not the nine others sharing its frame. If the refusal names no topic we
+     * can match, all we can do is say so.
+     */
+    void onSubscribeRejected(String retMsg) { // package-private: tests drive it via handleMessage
+        List<String> named = new ArrayList<>();
+        Matcher m = REJECTED_TOPIC.matcher(retMsg);
+        while (m.find()) named.add(m.group(1));
+        if (named.isEmpty()) {
+            log.warn("Bybit {} subscribe REJECTED and no topic named: {} (frame not re-sent)", category, retMsg);
+            return;
+        }
+        rejectedTopics.addAll(named);
+        int resent = 0;
+        WebSocketClient ws = wsClient;
+        synchronized (sentFrames) {
+            List<List<String>> affected = new ArrayList<>();
+            for (List<String> frame : sentFrames) {
+                for (String t : named) {
+                    if (frame.contains(t)) { affected.add(frame); break; }
+                }
+            }
+            for (List<String> frame : affected) {
+                sentFrames.remove(frame);
+                List<String> rest = frame.stream().filter(t -> !rejectedTopics.contains(t)).toList();
+                if (rest.isEmpty() || ws == null) continue;
+                sentFrames.add(rest);
+                ws.send("{\"op\":\"subscribe\",\"args\":" + toJsonArray(rest) + "}");
+                resent += rest.size();
+            }
+        }
+        log.warn("Bybit {} subscribe REJECTED for {} ({}); re-subscribed the other {} topics of the frame",
+                category, named, retMsg, resent);
+    }
+
+    /** Topics refused by Bybit on this socket (test seam). */
+    Set<String> rejectedTopics() {
+        return Collections.unmodifiableSet(rejectedTopics);
     }
 
     private void addTopicOnce(String topic) {
