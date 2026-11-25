@@ -19,13 +19,16 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -44,6 +47,12 @@ import org.slf4j.LoggerFactory;
  * {@code subscribeXxx} calls. Ping/pong keepalive is required every 20s on the v5 public
  * endpoints and IS sent, on {@link StreamClientConfig#pingInterval()} halved
  * drives it.
+ *
+ * <p>A topic registered once the socket is open is requested with a further {@code subscribe} op
+ * instead of waiting for the next reconnection: coalesced for a short moment, in frames of at most
+ * {@value #LIVE_CHUNK} topics and spaced so the connection stays well under the exchange's request
+ * rate. A request that cannot be sent (socket closed) is dropped on purpose: the topic is already
+ * in the registry and is sent with the next connection's initial subscribe.
  *
  * <p>Linear tickers carry both BBO + OHLC + funding rate in the same topic, so
  * {@link #subscribeTicker} and {@link #subscribeFundingRate} share one WS subscription under the
@@ -67,10 +76,27 @@ public class BybitStreamClient implements StreamClient {
 
     private final StreamClientConfig config;
     private final Category category;
-    private WebSocketClient wsClient;
+    private volatile WebSocketClient wsClient;
+
+    /** Topics per subscribe frame, for the initial subscribe and for live requests. */
+    static final int LIVE_CHUNK = 10;
+    private static final String LIVE_REQ_PREFIX = "live-";
 
     // Subscribe requests queued before connect.
     private final List<String> pendingTopics = new ArrayList<>();
+    private final Object topicsLock = new Object();
+    // Entries of pendingTopics already asked of the server (initial subscribe or live request);
+    // -1 until connect() takes its snapshot.
+    private int requestedTopicCount = -1;
+    // True once the initial subscribe frames are out: live frames must not interleave with them.
+    private boolean initialSent;
+    // Live frames sent and not yet answered, by request id, to name the topics of a refused one.
+    private final Map<String, List<String>> liveInFlight = new ConcurrentHashMap<>();
+    private final Queue<String> liveQueue = new ConcurrentLinkedQueue<>();
+    private final AtomicBoolean liveFlushRunning = new AtomicBoolean(false);
+    private final AtomicLong requestId = new AtomicLong();
+    private final Duration liveCoalesce;
+    private final Duration liveFrameGap;
     /**
      * The subscribe frames sent on the current socket, as topic lists. Bybit rejects a WHOLE frame
      * when one of its topics is unknown ({@code {"success":false,"ret_msg":"error:handler not
@@ -135,10 +161,27 @@ public class BybitStreamClient implements StreamClient {
      *  the real HTTP GET) to exercise the funding REST re-seed without network. */
     BybitStreamClient(
             StreamClientConfig config, Category category, Supplier<String> linearTickersFetcher) {
+        this(config, category, linearTickersFetcher, Duration.ofMillis(200), Duration.ofMillis(250));
+    }
+
+    /** Test seam: also the coalescing delay and the spacing between live frames. */
+    BybitStreamClient(
+            StreamClientConfig config,
+            Category category,
+            Supplier<String> linearTickersFetcher,
+            Duration liveCoalesce,
+            Duration liveFrameGap) {
         this.config = config;
         this.category = category;
         this.linearTickersFetcher =
                 linearTickersFetcher != null ? linearTickersFetcher : this::httpGetLinearTickers;
+        this.liveCoalesce = liveCoalesce;
+        this.liveFrameGap = liveFrameGap;
+    }
+
+    /** Test seam: live frames sent and not yet answered. */
+    int liveInFlightSize() {
+        return liveInFlight.size();
     }
 
     public static BybitStreamClient spot(StreamClientConfig config) {
@@ -151,8 +194,16 @@ public class BybitStreamClient implements StreamClient {
 
     @Override
     public void connect() throws Exception {
-        if (pendingTopics.isEmpty()) {
-            throw new IllegalStateException("No subscriptions registered. Subscribe before connecting.");
+        List<String> initial;
+        synchronized (topicsLock) {
+            if (pendingTopics.isEmpty()) {
+                throw new IllegalStateException("No subscriptions registered. Subscribe before connecting.");
+            }
+            initial = new ArrayList<>(pendingTopics);
+            requestedTopicCount = initial.size();
+            // ids of the previous socket never get a reply
+            liveInFlight.clear();
+            initialSent = false;
         }
         wsClient = config.wsClientFactory().get();
         disconnectFired.set(false);
@@ -167,7 +218,7 @@ public class BybitStreamClient implements StreamClient {
         });
 
         String url = category == Category.SPOT ? SPOT_WS : LINEAR_WS;
-        log.info("Connecting to Bybit {} with {} topics", category, pendingTopics.size());
+        log.info("Connecting to Bybit {} with {} topics", category, initial.size());
         wsClient.connect(url);
 
         // Subscribe op sends all topics in one frame. Bybit caps each frame at 21k bytes and 10
@@ -175,12 +226,22 @@ public class BybitStreamClient implements StreamClient {
         // split into chunks of 10 defensively — the WS accepts multiple subscribe frames.
         synchronized (sentFrames) {
             sentFrames.clear();
-            for (int i = 0; i < pendingTopics.size(); i += 10) {
-                List<String> chunk = List.copyOf(pendingTopics.subList(i, Math.min(i + 10, pendingTopics.size())));
+            for (int i = 0; i < initial.size(); i += LIVE_CHUNK) {
+                List<String> chunk = List.copyOf(initial.subList(i, Math.min(i + LIVE_CHUNK, initial.size())));
                 sentFrames.add(chunk);
                 wsClient.send("{\"op\":\"subscribe\",\"args\":" + toJsonArray(chunk) + "}");
             }
         }
+
+        // Topics registered while the handshake and the initial frames were running are in
+        // neither: request them now, and let live requests go out from here on.
+        List<String> late;
+        synchronized (topicsLock) {
+            late = new ArrayList<>(pendingTopics.subList(requestedTopicCount, pendingTopics.size()));
+            requestedTopicCount = pendingTopics.size();
+            initialSent = true;
+        }
+        late.forEach(this::enqueueLive);
 
         schedulePing();
         scheduleFundingReseed();
@@ -352,6 +413,7 @@ public class BybitStreamClient implements StreamClient {
         if (pingExec != null) {
             pingExec.shutdownNow();
         }
+        dropQueued();
         if (wsClient != null) {
             wsClient.close();
         }
@@ -361,9 +423,10 @@ public class BybitStreamClient implements StreamClient {
         try {
             JsonNode root = MAPPER.readTree(message);
             // Subscribe ack / pong responses arrive with {"success":true, "op":"subscribe"/"pong"}
-            // and no topic. A FAILED subscribe ack is the only sign that a whole frame is dead, so it
-            // is handled, not skipped.
+            // and no topic. The answer to a live subscribe is checked first. A FAILED subscribe ack, live
+            // or initial, is the only sign that a whole frame is dead, so it is handled, not skipped.
             if (!root.has("topic")) {
+                if (root.has("req_id")) handleLiveReply(root);
                 if ("subscribe".equals(root.path("op").asText("")) && !root.path("success").asBoolean(true)) {
                     onSubscribeRejected(root.path("ret_msg").asText(""));
                 }
@@ -547,14 +610,133 @@ public class BybitStreamClient implements StreamClient {
                 category, named, retMsg, resent);
     }
 
+    /** Remember a frame sent on the current socket, so that a refusal naming one of its topics can re-send the rest. */
+    private void recordFrame(List<String> topics) {
+        synchronized (sentFrames) {
+            sentFrames.add(List.copyOf(topics));
+        }
+    }
+
     /** Topics refused by Bybit on this socket (test seam). */
     Set<String> rejectedTopics() {
         return Collections.unmodifiableSet(rejectedTopics);
     }
 
     private void addTopicOnce(String topic) {
-        if (!pendingTopics.contains(topic)) {
+        boolean live = false;
+        synchronized (topicsLock) {
+            // The registry is what makes a topic idempotent: one already in it was either sent with
+            // the initial subscribe or requested live, and is never requested again.
+            if (pendingTopics.contains(topic)) {
+                return;
+            }
             pendingTopics.add(topic);
+            if (initialSent && requestedTopicCount >= 0 && isConnected()) {
+                requestedTopicCount = pendingTopics.size();
+                live = true;
+            }
+        }
+        if (live) {
+            enqueueLive(topic);
+        }
+    }
+
+    private void enqueueLive(String topic) {
+        liveQueue.add(topic);
+        if (liveFlushRunning.compareAndSet(false, true)) {
+            Thread.ofVirtual().name("bybit-live-subscribe").start(this::flushLive);
+        }
+    }
+
+    /**
+     * Drains the live queue into subscribe frames. A single runner at a time, so frames are never
+     * sent concurrently with each other and never faster than one per {@code liveFrameGap}.
+     */
+    private void flushLive() {
+        try {
+            sleep(liveCoalesce);
+            while (true) {
+                List<String> chunk = new ArrayList<>(LIVE_CHUNK);
+                String next;
+                while (chunk.size() < LIVE_CHUNK && (next = liveQueue.poll()) != null) {
+                    chunk.add(next);
+                }
+                if (chunk.isEmpty()) {
+                    break;
+                }
+                WebSocketClient ws = wsClient;
+                if (ws == null || !ws.isOpen()) {
+                    log.info("Bybit live subscribe dropped for {} topics: socket closed; they join the next connection",
+                            chunk.size() + liveQueue.size());
+                    dropQueued();
+                    break;
+                }
+                String reqId = LIVE_REQ_PREFIX + requestId.incrementAndGet();
+                liveInFlight.put(reqId, chunk);
+                recordFrame(chunk);
+                try {
+                    ws.send(liveFrame(chunk, reqId));
+                } catch (RuntimeException e) {
+                    liveInFlight.remove(reqId);
+                    throw e;
+                }
+                log.info("Bybit live subscribe req_id={} topics={}", reqId, chunk.size());
+                if (!liveQueue.isEmpty()) {
+                    sleep(liveFrameGap);
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            dropQueued();
+        } catch (RuntimeException e) {
+            log.warn("Bybit live subscribe failed: {}; the topics join the next connection", e.getMessage());
+            dropQueued();
+        } finally {
+            liveFlushRunning.set(false);
+            // A topic queued just as the runner was finishing would otherwise wait for the next
+            // registration or reconnection; this re-check closes that window of a few
+            // microseconds. It cannot be exercised deterministically, so it has no test of its own.
+            if (!liveQueue.isEmpty() && liveFlushRunning.compareAndSet(false, true)) {
+                Thread.ofVirtual().name("bybit-live-subscribe").start(this::flushLive);
+            }
+        }
+    }
+
+    /** Forgets the requests still waiting: the topics stay in the registry and join the next connection. */
+    private void dropQueued() {
+        liveQueue.clear();
+    }
+
+    private static void sleep(Duration d) throws InterruptedException {
+        if (!d.isZero()) {
+            Thread.sleep(d);
+        }
+    }
+
+    static String liveFrame(List<String> topics, String reqId) {
+        var root = MAPPER.createObjectNode();
+        root.put("req_id", reqId);
+        root.put("op", "subscribe");
+        var args = root.putArray("args");
+        topics.forEach(args::add);
+        return root.toString();
+    }
+
+    /**
+     * The answer to a live subscribe: {@code "success":true} when accepted, {@code "success":false}
+     * with a {@code ret_msg} when refused. A refused topic is only logged: it stays in the registry
+     * and is sent with the next connection's initial subscribe. Replies to the initial subscribe
+     * carry no live request id and are left alone, as before.
+     */
+    private void handleLiveReply(JsonNode root) {
+        String reqId = root.path("req_id").asText("");
+        if (!reqId.startsWith(LIVE_REQ_PREFIX)) {
+            return;
+        }
+        List<String> topics = liveInFlight.remove(reqId);
+        if (!root.path("success").asBoolean(false)) {
+            log.warn("Bybit refused live subscribe req_id={} topics={}: {}", reqId,
+                    topics == null ? "?" : topics.size() + " " + topics, root.path("ret_msg").asText(""));
         }
     }
 

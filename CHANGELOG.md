@@ -6,6 +6,24 @@ All notable public QTStreamX changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0-rc.7] — 2026-11-25
+
+### Fixed
+
+- `BinanceStreamClient` requests a stream registered after the connection is open with a live
+  `SUBSCRIBE`. The stream list is read from the connection URL, so such a stream used to take
+  effect only at the next reconnection, which for a long-lived link can be a day away. Requests
+  are coalesced, sent in frames of at most 50 streams and spaced to stay under the exchange's
+  control-message cap; a stream already requested is never sent twice, a refused request is
+  logged, and a request that cannot be sent (socket closed) is dropped because the stream is
+  already in the registry and joins the next connection's URL.
+- `BybitStreamClient` requests a topic registered after the connection is open with a live
+  `subscribe` op, with the same coalescing, frames of at most 10 topics and spacing. Before, the
+  topic was sent only with the next connection's initial subscribe. Live frames never interleave
+  with the initial ones, and the answer to a live request (identified by its `req_id`) is checked:
+  a refusal is logged, the topic stays in the registry, and the other topics of that frame are requested again
+  without the one Bybit names.
+
 ## [0.1.0-rc.6] — 2026-11-25
 
 ### Fixed
